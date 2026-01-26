@@ -40,7 +40,7 @@
 		"build:dev": "bun run ./bun.config.ts --env-mode dev",
 		"build:npm": "bun run ./bun.config.ts --env-mode npm",
 		"ci:build": "CI=\"true\" turbo run build:dev build:npm",
-		"ci:test": "bun test --coverage",
+		"ci:test": "NODE_ENV=test bun test --coverage",
 		"ci:version": "changeset version && biome format --write",
 		"lint": "biome check --max-diagnostics=none",
 		"lint:fix": "biome check --write --max-diagnostics=none",
@@ -49,9 +49,9 @@
 		"lint:md:fix": "markdownlint-cli2  --config './lib/configs/.markdownlint-cli2.jsonc' --fix",
 		"lint:tsdoc": "eslint --config ./lib/configs/eslint.config.ts --ignore-pattern '**/*.test.ts'",
 		"prepare": "husky",
-		"test": "bun test",
-		"test:coverage": "bun test --coverage",
-		"test:watch": "bun test --watch",
+		"test": "NODE_ENV=test bun test",
+		"test:coverage": "NODE_ENV=test bun test --coverage",
+		"test:watch": "NODE_ENV=test bun test --watch",
 		"typecheck": "tsgo --noEmit"
 	},
 	"dependencies": {
@@ -93,9 +93,6 @@
 			"optional": false
 		},
 		"@types/bun": {
-			"optional": false
-		},
-		"@types/node": {
 			"optional": false
 		},
 		"@typescript/native-preview": {

@@ -41,12 +41,27 @@ const magenta: typeof colors.magenta = colors.magenta;
  * @internal
  */
 function isTestEnvironment(): boolean {
-	return (
-		process.env.NODE_ENV === "test" ||
-		process.env.VITEST === "true" ||
-		process.env.JEST_WORKER_ID !== undefined ||
-		process.argv.some((arg) => arg.includes("vitest") || arg.includes("jest") || arg.includes("bun test"))
+	// Check common test environment variables
+	if (process.env.NODE_ENV === "test" || process.env.VITEST === "true" || process.env.JEST_WORKER_ID !== undefined) {
+		return true;
+	}
+
+	// Check for test runners in argv
+	const hasTestRunner = process.argv.some(
+		(arg) => arg.includes("vitest") || arg.includes("jest") || arg.includes(":bun-test"),
 	);
+	if (hasTestRunner) {
+		return true;
+	}
+
+	// Check for Bun's test runner: argv contains "bun" executable and "test" command
+	const hasBun = process.argv.some((arg) => arg.endsWith("/bun") || arg.endsWith("\\bun") || arg === "bun");
+	const hasTest = process.argv.includes("test");
+	if (hasBun && hasTest) {
+		return true;
+	}
+
+	return false;
 }
 
 /**
