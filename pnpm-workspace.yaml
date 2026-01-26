@@ -1,0 +1,11 @@
+packages:
+  - .
+loglevel: info
+onlyBuiltDependencies:
+  - "@parcel/watcher"
+  - core-js
+  - esbuild
+  - msgpackr-extract
+overrides:
+  "lodash": "^=4.17.23"
+preferFrozenLockfile: true
