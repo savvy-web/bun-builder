@@ -1,5 +1,15 @@
 # @savvy-web/rslib-builder
 
+## 0.1.1
+
+### Patch Changes
+
+- ce07ef5: Fix build failures and improve error diagnostics:
+
+  - Add `bunTarget` option (default: `"bun"`) to support Bun-specific APIs like `import { $ } from "bun"`
+  - Show detailed error messages from Bun.build() with file paths and line numbers instead of generic "Bundle failed"
+  - Fix entry naming collisions when multiple entries have the same filename (e.g., `src/index.ts` and `src/cli/index.ts`)
+
 ## 0.1.0
 
 ### Minor Changes
