@@ -1,0 +1,15 @@
+# Bun configuration
+# https://bun.sh/docs/runtime/bunfig
+
+[test]
+# Coverage configuration (enabled via --coverage flag)
+coverage = false
+coverageDir = "coverage"
+coverageReporter = ["text", "lcov"]
+
+# Coverage thresholds
+# Note: build-lifecycle.ts requires integration tests to cover fully
+coverageThreshold = { line = 40, function = 50, statement = 40 }
+
+# Exclude test files and config from coverage
+coverageSkipTestFiles = true

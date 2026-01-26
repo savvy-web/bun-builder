@@ -1,0 +1,162 @@
+/**
+ * Bun-based build system for Node.js libraries with automatic package.json transformation,
+ * TypeScript declaration bundling, and multi-target support.
+ *
+ * @remarks
+ * This package provides a powerful builder system built on top of Bun that simplifies the
+ * process of building modern ESM Node.js libraries. It offers:
+ *
+ * - **Automatic Entry Detection**: Auto-detects entry points from package.json exports
+ * - **Multi-Target Builds**: Support for dev and npm build targets
+ * - **Bundled ESM Output**: Optimized single-file outputs with rolled-up types
+ * - **Package.json Transformation**: Automatic path updates, Bun catalog resolution
+ * - **TypeScript Declaration Bundling**: Using tsgo and API Extractor
+ * - **File Array Generation**: Automatic files array creation for package.json
+ * - **API Model Generation**: Optional `<packageName>.api.json` for documentation tooling
+ *
+ * ## Quick Start
+ *
+ * Create a `bun.config.ts` file in your project root:
+ *
+ * @example
+ * Basic usage in bun.config.ts:
+ * ```typescript
+ * import { BunLibraryBuilder } from '@savvy-web/bun-builder';
+ *
+ * export default BunLibraryBuilder.create({});
+ * ```
+ *
+ * @example
+ * With custom options:
+ * ```typescript
+ * import type { BunLibraryBuilderOptions } from '@savvy-web/bun-builder';
+ * import { BunLibraryBuilder } from '@savvy-web/bun-builder';
+ *
+ * const options: BunLibraryBuilderOptions = {
+ *   externals: ['lodash'],
+ *   dtsBundledPackages: ['type-fest'],
+ *   apiModel: true,
+ *   tsdocLint: true,
+ *   transform({ target, pkg }) {
+ *     if (target === 'npm') {
+ *       delete pkg.devDependencies;
+ *     }
+ *     return pkg;
+ *   },
+ * };
+ *
+ * export default BunLibraryBuilder.create(options);
+ * ```
+ *
+ * ## Running Builds
+ *
+ * ```bash
+ * # Build for development
+ * bun run bun.config.ts --env-mode dev
+ *
+ * # Build for npm publishing
+ * bun run bun.config.ts --env-mode npm
+ *
+ * # Build all targets (default)
+ * bun run bun.config.ts
+ * ```
+ *
+ * @packageDocumentation
+ */
+
+/* v8 ignore start - Export module, tested through consuming packages */
+
+// =============================================================================
+// Core Builder
+// =============================================================================
+
+export { BunLibraryBuilder } from "./builders/bun-library-builder.js";
+
+// =============================================================================
+// Builder Types
+// =============================================================================
+
+export type {
+	ApiModelOptions,
+	BuildResult,
+	BuildTarget,
+	BunLibraryBuilderOptions,
+	CopyPatternConfig,
+	EntryPoints,
+	TransformFilesCallback,
+	TransformFilesContext,
+	TransformPackageJsonFn,
+	TsDocLintErrorBehavior,
+	TsDocLintOptions,
+	TsDocMetadataOptions,
+	TsDocOptions,
+	TsDocTagDefinition,
+	TsDocTagGroup,
+} from "./builders/bun-library-builder.js";
+
+// =============================================================================
+// Entry Point Extraction
+// =============================================================================
+
+export type { EntryExtractorOptions, ExtractedEntries } from "./plugins/utils/entry-extractor.js";
+export { EntryExtractor, extractEntriesFromPackageJson } from "./plugins/utils/entry-extractor.js";
+
+// =============================================================================
+// Catalog Resolution
+// =============================================================================
+
+export { BunCatalogResolver, getDefaultCatalogResolver } from "./plugins/utils/catalog-resolver.js";
+
+// =============================================================================
+// Package.json Transformation
+// =============================================================================
+
+export type { FlexibleExports } from "./plugins/utils/package-json-transformer.js";
+export {
+	applyBuildTransformations,
+	buildPackageJson,
+	createTypePath,
+	resolveCatalogReferences,
+	transformExportPath,
+	transformPackageBin,
+	transformPackageExports,
+} from "./plugins/utils/package-json-transformer.js";
+
+// =============================================================================
+// File System Utilities
+// =============================================================================
+
+export type { FileExistResult } from "./plugins/utils/file-utils.js";
+export {
+	fileExistAsync,
+	findWorkspaceRoot,
+	getApiExtractorPath,
+	getTsgoBinPath,
+	getUnscopedPackageName,
+	packageJsonVersion,
+} from "./plugins/utils/file-utils.js";
+
+// =============================================================================
+// Logging Utilities
+// =============================================================================
+
+export type { EnvLogger, FileEntry, Logger, Timer } from "./plugins/utils/logger.js";
+export {
+	collectFileInfo,
+	createEnvLogger,
+	createLogger,
+	createTimer,
+	formatSize,
+	formatTime,
+	isCI,
+	printBanner,
+	printFileTable,
+} from "./plugins/utils/logger.js";
+
+// =============================================================================
+// Package.json Types
+// =============================================================================
+
+export type { JsonArray, JsonObject, JsonPrimitive, JsonValue, PackageJson } from "./types/package-json.js";
+
+/* v8 ignore stop */

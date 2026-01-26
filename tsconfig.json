@@ -1,0 +1,3 @@
+{
+	"extends": "./src/public/tsconfig/ecma/lib.json"
+}
