@@ -93,10 +93,14 @@ describe("isCI", () => {
 	});
 
 	test("detects CI environment variable", () => {
-		// Save original
+		// Save originals
 		const originalCI = process.env.CI;
+		const originalGitHubActions = process.env.GITHUB_ACTIONS;
 
 		try {
+			// Clear both CI indicators for controlled testing
+			delete process.env.GITHUB_ACTIONS;
+
 			process.env.CI = "true";
 			expect(isCI()).toBe(true);
 
@@ -104,13 +108,22 @@ describe("isCI", () => {
 			expect(isCI()).toBe(false);
 
 			delete process.env.CI;
-			// Result depends on GITHUB_ACTIONS
+			expect(isCI()).toBe(false);
+
+			// Test GITHUB_ACTIONS detection
+			process.env.GITHUB_ACTIONS = "true";
+			expect(isCI()).toBe(true);
 		} finally {
-			// Restore
+			// Restore originals
 			if (originalCI !== undefined) {
 				process.env.CI = originalCI;
 			} else {
 				delete process.env.CI;
+			}
+			if (originalGitHubActions !== undefined) {
+				process.env.GITHUB_ACTIONS = originalGitHubActions;
+			} else {
+				delete process.env.GITHUB_ACTIONS;
 			}
 		}
 	});

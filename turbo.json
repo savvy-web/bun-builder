@@ -1,6 +1,6 @@
 {
 	"$schema": "https://turborepo.com/schema.v2.json",
-	"globalPassThroughEnv": ["RSLIB_BUILDER_LOCAL_PATH", "GITHUB_ACTIONS", "CI"],
+	"globalPassThroughEnv": ["RSLIB_BUILDER_LOCAL_PATH", "GITHUB_ACTIONS", "CI", "NODE_ENV"],
 	"tasks": {
 		"build": {
 			"cache": true,
