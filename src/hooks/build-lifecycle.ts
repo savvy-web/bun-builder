@@ -243,35 +243,141 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 		}
 	}
 
-	const result = await Bun.build({
-		entrypoints,
-		outdir: context.outdir,
-		target: "node",
-		format: "esm",
-		splitting: false,
-		sourcemap: context.target === "dev" ? "linked" : "none",
-		minify: false,
-		external,
-		packages: "bundle",
-		naming: "[name].[ext]",
-		define: {
-			"process.env.__PACKAGE_VERSION__": JSON.stringify(context.version),
-			...context.options.define,
-		},
-		plugins: context.options.plugins,
-	});
+	let result: Awaited<ReturnType<typeof Bun.build>>;
 
-	if (!result.success) {
-		logger.error("Bun.build() failed");
-		for (const log of result.logs) {
-			logger.error(String(log));
+	try {
+		result = await Bun.build({
+			entrypoints,
+			outdir: context.outdir,
+			target: context.options.bunTarget ?? "bun",
+			format: "esm",
+			splitting: false,
+			sourcemap: context.target === "dev" ? "linked" : "none",
+			minify: false,
+			external,
+			packages: "bundle",
+			// Use [dir] to preserve directory structure and avoid collisions
+			// when multiple entry points have the same filename
+			naming: "[dir]/[name].[ext]",
+			define: {
+				"process.env.__PACKAGE_VERSION__": JSON.stringify(context.version),
+				...context.options.define,
+			},
+			plugins: context.options.plugins,
+		});
+	} catch (error) {
+		// Handle AggregateError thrown by Bun.build() for detailed error messages
+		if (error instanceof AggregateError && error.errors) {
+			logger.error("Bun.build() failed:");
+			for (const err of error.errors) {
+				const msg = err.message || String(err);
+				logger.error(`  ${msg}`);
+				// Log file position if available
+				if (err.position?.file) {
+					const pos = err.position;
+					logger.error(`    at ${pos.file}:${pos.line}:${pos.column}`);
+					if (pos.lineText) {
+						logger.error(`    ${pos.lineText}`);
+					}
+				}
+			}
+		} else {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			logger.error(`Bun.build() failed: ${errorMessage}`);
 		}
 		return { outputs: [], success: false };
 	}
 
-	logger.info(`Bundled ${result.outputs.length} file(s) in ${formatTime(timer.elapsed())}`);
+	if (!result.success) {
+		logger.error("Bun.build() failed:");
+		for (const log of result.logs) {
+			logger.error(`  ${String(log)}`);
+		}
+		return { outputs: [], success: false };
+	}
 
-	return { outputs: result.outputs, success: true };
+	// Post-process: Rename outputs to match entry names
+	// Bun.build() names files based on source paths, but we need them
+	// to match entry names for correct package.json paths
+	const renamedOutputs: BuildArtifact[] = [];
+	const sourceToEntryName = new Map<string, string>();
+
+	for (const [name, source] of Object.entries(context.entries)) {
+		// Normalize source path to match what Bun uses
+		const normalizedSource = source.replace(/^\.\//, "").replace(/\.tsx?$/, "");
+		sourceToEntryName.set(normalizedSource, name);
+	}
+
+	for (const output of result.outputs) {
+		const relativePath = relative(context.outdir, output.path);
+		const relativeWithoutExt = relativePath.replace(/\.(js|map)$/, "");
+
+		// Check for various path prefixes that Bun might use
+		let entryName: string | undefined;
+		let bestMatchLength = 0;
+
+		for (const [source, name] of sourceToEntryName) {
+			// Try different normalizations
+			const variants = [
+				source, // e.g., "src/cli/index"
+				source.replace(/^src\//, ""), // e.g., "cli/index"
+				source.replace(/\/index$/, ""), // e.g., "src/cli"
+				source
+					.replace(/^src\//, "")
+					.replace(/\/index$/, ""), // e.g., "cli"
+			].filter((v) => v.length > 0); // Filter out empty strings
+
+			for (const variant of variants) {
+				// Prefer exact matches or the longest matching suffix
+				if (variant === relativeWithoutExt) {
+					entryName = name;
+					bestMatchLength = variant.length;
+					break;
+				}
+				if (relativeWithoutExt.endsWith(variant) && variant.length > bestMatchLength) {
+					entryName = name;
+					bestMatchLength = variant.length;
+				}
+			}
+			if (bestMatchLength === relativeWithoutExt.length) break; // Found exact match
+		}
+
+		if (entryName && entryName !== relativeWithoutExt) {
+			const ext = relativePath.endsWith(".map") ? ".js.map" : ".js";
+			const newPath = join(context.outdir, `${entryName}${ext}`);
+			const newDir = dirname(newPath);
+
+			// Ensure directory exists
+			await mkdir(newDir, { recursive: true });
+
+			// Rename file
+			const { rename } = await import("node:fs/promises");
+			await rename(output.path, newPath);
+
+			// Update output artifact
+			renamedOutputs.push({
+				...output,
+				path: newPath,
+			});
+		} else {
+			renamedOutputs.push(output);
+		}
+	}
+
+	// Clean up empty directories left after renaming
+	const { rmdir } = await import("node:fs/promises");
+	for (const output of result.outputs) {
+		const dir = dirname(output.path);
+		try {
+			await rmdir(dir);
+		} catch {
+			// Directory not empty or doesn't exist, ignore
+		}
+	}
+
+	logger.info(`Bundled ${renamedOutputs.length} file(s) in ${formatTime(timer.elapsed())}`);
+
+	return { outputs: renamedOutputs, success: true };
 }
 
 /**

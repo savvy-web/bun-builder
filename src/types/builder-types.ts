@@ -786,6 +786,32 @@ export interface BunLibraryBuilderOptions {
 	 * Validation runs before bundling for all targets.
 	 */
 	tsdocLint?: TsDocLintOptions | boolean;
+
+	/**
+	 * Target runtime for Bun.build() bundling.
+	 *
+	 * @remarks
+	 * Controls which runtime the bundle is optimized for:
+	 *
+	 * - `"bun"`: Bun runtime (default). Allows using Bun-specific APIs and builtins
+	 *   like `import { $ } from "bun"`.
+	 * - `"node"`: Node.js runtime. Compatible with Node.js environments but cannot
+	 *   use Bun-specific APIs.
+	 * - `"browser"`: Browser environment. For browser-compatible bundles.
+	 *
+	 * @defaultValue `"bun"`
+	 *
+	 * @example
+	 * Building for Node.js compatibility:
+	 * ```typescript
+	 * import { BunLibraryBuilder } from '@savvy-web/bun-builder';
+	 *
+	 * export default BunLibraryBuilder.create({
+	 *   bunTarget: 'node', // Use when targeting pure Node.js environments
+	 * });
+	 * ```
+	 */
+	bunTarget?: "bun" | "node" | "browser";
 }
 
 /**
