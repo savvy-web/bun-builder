@@ -297,13 +297,21 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 	}
 
 	// Post-process: Rename outputs to match entry names
-	// Bun.build() names files based on source paths, but we need them
-	// to match entry names for correct package.json paths
+	//
+	// Problem: Bun.build() with [dir]/[name].[ext] naming creates output paths based on
+	// the source file structure (e.g., "cli/index.js" from "src/cli/index.ts"), but
+	// package.json expects paths matching our entry names (e.g., "bin/my-cli.js" from
+	// entry "bin/my-cli"). We need to rename outputs to match entry names.
+	//
+	// Example:
+	//   Entry: "bin/claude-plugin" => "./src/cli/index.ts"
+	//   Bun outputs: "cli/index.js" (based on source path)
+	//   We rename to: "bin/claude-plugin.js" (based on entry name)
 	const renamedOutputs: BuildArtifact[] = [];
 	const sourceToEntryName = new Map<string, string>();
 
 	for (const [name, source] of Object.entries(context.entries)) {
-		// Normalize source path to match what Bun uses
+		// Normalize source path to match what Bun uses (strip ./ prefix and extension)
 		const normalizedSource = source.replace(/^\.\//, "").replace(/\.tsx?$/, "");
 		sourceToEntryName.set(normalizedSource, name);
 	}
@@ -312,12 +320,18 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 		const relativePath = relative(context.outdir, output.path);
 		const relativeWithoutExt = relativePath.replace(/\.(js|map)$/, "");
 
-		// Check for various path prefixes that Bun might use
+		// Match output path to an entry by trying multiple normalizations of the source path.
+		// This handles the mismatch between what Bun outputs and what our entries expect.
 		let entryName: string | undefined;
 		let bestMatchLength = 0;
 
 		for (const [source, name] of sourceToEntryName) {
-			// Try different normalizations
+			// Generate path variants to handle different Bun output structures:
+			// - Full path: "src/cli/index" (when Bun preserves full structure)
+			// - Without src: "cli/index" (when Bun strips src/ prefix)
+			// - Without index: "src/cli" (when Bun uses directory name)
+			// - Minimal: "cli" (when Bun strips both src/ and /index)
+			// Empty strings are filtered to prevent false matches (endsWith("") is always true)
 			const variants = [
 				source, // e.g., "src/cli/index"
 				source.replace(/^src\//, ""), // e.g., "cli/index"
@@ -325,10 +339,12 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 				source
 					.replace(/^src\//, "")
 					.replace(/\/index$/, ""), // e.g., "cli"
-			].filter((v) => v.length > 0); // Filter out empty strings
+			].filter((v) => v.length > 0);
 
 			for (const variant of variants) {
-				// Prefer exact matches or the longest matching suffix
+				// Use longest-match strategy to prevent ambiguous matches.
+				// E.g., "cli/index" should match entry with source "src/cli/index",
+				// not a shorter match like "index" from another entry.
 				if (variant === relativeWithoutExt) {
 					entryName = name;
 					bestMatchLength = variant.length;
