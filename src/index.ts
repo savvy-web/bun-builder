@@ -112,46 +112,28 @@ export { BunCatalogResolver, getDefaultCatalogResolver } from "./plugins/utils/c
 // =============================================================================
 
 export type { FlexibleExports } from "./plugins/utils/package-json-transformer.js";
-export {
-	applyBuildTransformations,
-	buildPackageJson,
-	createTypePath,
-	resolveCatalogReferences,
-	transformExportPath,
-	transformPackageBin,
-	transformPackageExports,
-} from "./plugins/utils/package-json-transformer.js";
+export { PackageJsonTransformer } from "./plugins/utils/package-json-transformer.js";
 
 // =============================================================================
 // File System Utilities
 // =============================================================================
 
 export type { FileExistResult } from "./plugins/utils/file-utils.js";
-export {
-	fileExistAsync,
-	findWorkspaceRoot,
-	getApiExtractorPath,
-	getTsgoBinPath,
-	getUnscopedPackageName,
-	packageJsonVersion,
-} from "./plugins/utils/file-utils.js";
+export { FileSystemUtils, LocalPathValidator } from "./plugins/utils/file-utils.js";
+
+// =============================================================================
+// Build Lifecycle
+// =============================================================================
+
+export type { BuildContext, ResolvedApiModelConfig } from "./hooks/build-lifecycle.js";
+export { ApiModelConfigResolver, LocalPathCopier } from "./hooks/build-lifecycle.js";
 
 // =============================================================================
 // Logging Utilities
 // =============================================================================
 
 export type { EnvLogger, FileEntry, Logger, Timer } from "./plugins/utils/logger.js";
-export {
-	collectFileInfo,
-	createEnvLogger,
-	createLogger,
-	createTimer,
-	formatSize,
-	formatTime,
-	isCI,
-	printBanner,
-	printFileTable,
-} from "./plugins/utils/logger.js";
+export { BuildLogger } from "./plugins/utils/logger.js";
 
 // =============================================================================
 // Package.json Types

@@ -5,7 +5,7 @@ category: architecture
 created: 2026-01-26
 updated: 2026-01-26
 last-synced: 2026-01-26
-completeness: 95
+completeness: 100
 related: []
 dependencies: []
 ---
@@ -198,24 +198,39 @@ class BunCatalogResolver {
 }
 ```
 
-#### Component 5: Package.json Transformer
+#### Component 5: PackageJsonTransformer
 
 **Location:** `src/plugins/utils/package-json-transformer.ts`
 
 **Purpose:** Transform package.json for build output with path updates and
-catalog resolution.
+catalog resolution. All methods are static on the `PackageJsonTransformer` class.
 
-**Key Functions:**
+**Key Methods:**
 
-| Function                      | Purpose                                 |
-|-------------------------------|-----------------------------------------|
-| `transformExportPath()`       | Strip src/ prefix, convert .ts to .js   |
-| `createTypePath()`            | Create .d.ts path from .js path         |
-| `transformPackageBin()`       | Transform bin field paths               |
-| `transformPackageExports()`   | Recursively transform exports field     |
-| `applyBuildTransformations()` | Apply all RSlib-style transformations   |
-| `resolveCatalogReferences()`  | Resolve catalog: and workspace: refs    |
-| `buildPackageJson()`          | Complete transformation pipeline        |
+| Method                                               | Purpose                               |
+|------------------------------------------------------|---------------------------------------|
+| `PackageJsonTransformer.transformExportPath()`       | Strip src/ prefix, convert .ts to .js |
+| `PackageJsonTransformer.createTypePath()`            | Create .d.ts path from .js path       |
+| `PackageJsonTransformer.transformBin()`              | Transform bin field paths             |
+| `PackageJsonTransformer.transformExports()`          | Recursively transform exports field   |
+| `PackageJsonTransformer.applyBuildTransformations()` | Apply all RSlib-style transformations |
+| `PackageJsonTransformer.resolveCatalogReferences()`  | Resolve catalog: and workspace: refs  |
+| `PackageJsonTransformer.build()`                     | Complete transformation pipeline      |
+
+```typescript
+import { PackageJsonTransformer } from '@savvy-web/bun-builder';
+
+// Transform a single path
+const jsPath = PackageJsonTransformer.transformExportPath('./src/index.ts');
+// Returns: "./index.js"
+
+// Complete package.json transformation
+const transformed = await PackageJsonTransformer.build(pkg, {
+  isProduction: true,
+  processTSExports: true,
+  bundle: true,
+});
+```
 
 #### Component 6: TSConfig System
 
@@ -260,30 +275,141 @@ const PACKAGE_VERSION: string = getVersion();
 The macro reads `package.json` during bundling and embeds the version string
 directly into the output, avoiding runtime file reads.
 
-#### Component 8: Logger Utilities
+#### Component 8: BuildLogger
 
 **Location:** `src/plugins/utils/logger.ts`
 
 **Purpose:** RSlib-style logging with colored output and environment awareness.
+All methods are static on the `BuildLogger` class.
 
-**Key Features:**
+**Key Methods:**
 
-- Test environment detection (auto-suppress output)
-- CI environment detection (for strict error handling)
-- Timer utilities for build duration tracking
-- File size formatting
-- File table output (RSlib style)
-- Environment-tagged logger for build targets
+| Method                            | Purpose                                  |
+|-----------------------------------|------------------------------------------|
+| `BuildLogger.isCI()`              | Check if running in CI environment       |
+| `BuildLogger.isTestEnvironment()` | Check if running in test environment     |
+| `BuildLogger.formatTime()`        | Format milliseconds to human-readable    |
+| `BuildLogger.formatSize()`        | Format bytes to human-readable           |
+| `BuildLogger.createTimer()`       | Create timer for performance measurement |
+| `BuildLogger.createLogger()`      | Create logger with bracketed prefix      |
+| `BuildLogger.createEnvLogger()`   | Create environment-aware logger          |
+| `BuildLogger.collectFileInfo()`   | Collect file sizes for file table        |
+| `BuildLogger.printBanner()`       | Print version banner                     |
+| `BuildLogger.printFileTable()`    | Print RSlib-style file table             |
+| `BuildLogger.printSummary()`      | Print build completion summary           |
 
 ```typescript
+import { BuildLogger } from '@savvy-web/bun-builder';
+
 // Basic logger with bracketed prefix
-const logger = createLogger("tsdoc-lint");
+const logger = BuildLogger.createLogger("tsdoc-lint");
 logger.info("Validating...");  // info    [tsdoc-lint] Validating...
 
 // Environment-aware logger with target context
-const envLogger = createEnvLogger("npm");
+const envLogger = BuildLogger.createEnvLogger("npm");
 envLogger.info("Building...");  // info    [npm] Building...
 envLogger.global.info("Global");  // info    Global
+
+// Timer and formatting
+const timer = BuildLogger.createTimer();
+// ... operation
+console.log(BuildLogger.formatTime(timer.elapsed())); // "150ms" or "2.50 s"
+```
+
+#### Component 9: FileSystemUtils
+
+**Location:** `src/plugins/utils/file-utils.ts`
+
+**Purpose:** File system utilities for build operations. All methods are static
+on the `FileSystemUtils` class.
+
+**Key Methods:**
+
+| Method                                     | Purpose                          |
+|--------------------------------------------|----------------------------------|
+| `FileSystemUtils.fileExistsAsync()`        | Check if file exists (async)     |
+| `FileSystemUtils.packageJsonVersion()`     | Read package version             |
+| `FileSystemUtils.findWorkspaceRoot()`      | Find monorepo workspace root     |
+| `FileSystemUtils.getApiExtractorPath()`    | Get API Extractor package path   |
+| `FileSystemUtils.getTsgoBinPath()`         | Get tsgo binary path             |
+| `FileSystemUtils.getUnscopedPackageName()` | Strip @scope/ from package name  |
+
+```typescript
+import { FileSystemUtils } from '@savvy-web/bun-builder';
+
+const version = await FileSystemUtils.packageJsonVersion();
+const root = FileSystemUtils.findWorkspaceRoot();
+const tsgoBin = FileSystemUtils.getTsgoBinPath();
+```
+
+#### Component 10: LocalPathValidator
+
+**Location:** `src/plugins/utils/file-utils.ts`
+
+**Purpose:** Validates local paths for the `apiModel.localPaths` feature. Ensures
+that destination directories exist before attempting to copy build artifacts.
+
+**Key Methods:**
+
+| Method                              | Purpose                                |
+|-------------------------------------|----------------------------------------|
+| `LocalPathValidator.validatePaths()`| Validate all paths, throw on invalid   |
+| `LocalPathValidator.isValidPath()`  | Check single path, return boolean      |
+
+```typescript
+import { LocalPathValidator } from '@savvy-web/bun-builder';
+
+// Validate paths before copying (throws on error)
+LocalPathValidator.validatePaths(process.cwd(), ['../docs/api', './output']);
+
+// Check a single path
+if (LocalPathValidator.isValidPath(process.cwd(), '../docs/api')) {
+  console.log('Path is valid');
+}
+```
+
+#### Component 11: ApiModelConfigResolver
+
+**Location:** `src/hooks/build-lifecycle.ts`
+
+**Purpose:** Resolves `ApiModelOptions` from builder configuration into concrete
+configuration values with all defaults applied.
+
+**Key Methods:**
+
+| Method                             | Purpose                                |
+|------------------------------------|----------------------------------------|
+| `ApiModelConfigResolver.resolve()` | Resolve options into full config object|
+
+```typescript
+import { ApiModelConfigResolver } from '@savvy-web/bun-builder';
+
+const config = ApiModelConfigResolver.resolve(options.apiModel, 'my-package');
+// Returns: {
+//   enabled: true,
+//   filename: 'my-package.api.json',
+//   tsdocMetadataEnabled: true,
+//   tsdocMetadataFilename: 'tsdoc-metadata.json',
+//   localPaths: ['../docs/api'],
+// }
+```
+
+#### Component 12: LocalPathCopier
+
+**Location:** `src/hooks/build-lifecycle.ts`
+
+**Purpose:** Copies build artifacts (API model, tsdoc-metadata.json, package.json)
+to specified local directories after build completion.
+
+```typescript
+import { LocalPathCopier } from '@savvy-web/bun-builder';
+
+const copier = new LocalPathCopier(context, {
+  apiModelFilename: 'my-package.api.json',
+  tsdocMetadataFilename: 'tsdoc-metadata.json',
+});
+
+await copier.copyToLocalPaths(['../docs/api', './site/api']);
 ```
 
 ### Architecture Diagram
@@ -310,23 +436,29 @@ envLogger.global.info("Global");  // info    Global
 |    executeBuild(options, target)                            |
 |                                                             |
 |    1. Setup (read pkg, extract entries, create outdir)      |
-|    2. TSDoc Lint (optional pre-build validation)            |
-|    3. Bun.build() (bundle source files)                     |
-|    4. tsgo (generate declarations)                          |
-|    5. API Extractor (bundle declarations)                   |
-|    6. Copy files (README, LICENSE, assets)                  |
-|    7. Transform files (user callback)                       |
-|    8. Write package.json (with files array)                 |
+|    2. Validate local paths (early fail-fast)                |
+|    3. TSDoc Lint (optional pre-build validation)            |
+|    4. Bun.build() (bundle source files)                     |
+|    5. tsgo (generate declarations)                          |
+|    6. API Extractor (bundle declarations + tsdoc-metadata)  |
+|    7. Copy files (README, LICENSE, assets)                  |
+|    8. Transform files (user callback)                       |
+|    9. Write package.json (with files array)                 |
+|   10. Copy to local paths (npm target, non-CI only)         |
 +-------------------------------------------------------------+
                               |
                               v
 +-------------------------------------------------------------+
-|              Utility Modules Layer                          |
+|              Utility Classes Layer                          |
 |    - EntryExtractor: Parse package.json exports/bin         |
 |    - BunCatalogResolver: Resolve catalog:/workspace:        |
-|    - Package.json transformer: Path transformations         |
+|    - PackageJsonTransformer: Path transformations (static)  |
+|    - FileSystemUtils: File ops, paths, versions (static)    |
+|    - LocalPathValidator: Validate destination paths (static)|
+|    - BuildLogger: RSlib-style colored output (static)       |
+|    - ApiModelConfigResolver: Resolve API model config       |
+|    - LocalPathCopier: Copy artifacts to local paths         |
 |    - TSConfigs: Manage tsconfig for declaration gen         |
-|    - Logger: RSlib-style colored output                     |
 +-------------------------------------------------------------+
                               |
                               v
@@ -598,18 +730,22 @@ version management.
 ```text
 bun-builder/
 ├── src/
-│   ├── index.ts                 # Main exports
+│   ├── index.ts                 # Main exports (re-exports all public API)
 │   ├── builders/
 │   │   └── bun-library-builder.ts  # Main builder class
 │   ├── hooks/
 │   │   └── build-lifecycle.ts   # Build phase implementations
+│   │                            # - ApiModelConfigResolver class
+│   │                            # - LocalPathCopier class
+│   │                            # - executeBuild() orchestration
 │   ├── plugins/
 │   │   └── utils/
-│   │       ├── entry-extractor.ts        # Entry detection
-│   │       ├── catalog-resolver.ts       # Catalog resolution
-│   │       ├── package-json-transformer.ts # Pkg transformations
-│   │       ├── file-utils.ts             # FS utilities
-│   │       └── logger.ts                 # Logging utilities
+│   │       ├── entry-extractor.ts        # EntryExtractor class
+│   │       ├── catalog-resolver.ts       # BunCatalogResolver class
+│   │       ├── package-json-transformer.ts # PackageJsonTransformer (static)
+│   │       ├── file-utils.ts             # FileSystemUtils (static)
+│   │       │                             # LocalPathValidator (static)
+│   │       └── logger.ts                 # BuildLogger (static)
 │   ├── macros/
 │   │   └── version.ts           # Compile-time version macro
 │   ├── tsconfig/
@@ -642,12 +778,26 @@ executeBuild(options, target)
 |    - Extract version                   |
 |    - Extract entry points              |
 |    - Log auto-detected entries         |
-|    - Create output directory           |
 +----------------------------------------+
          |
          v
 +----------------------------------------+
-| 2. TSDOC LINT (optional)               |
+| 2. VALIDATE LOCAL PATHS (npm only)     |
+|    - Skip in CI environments           |
+|    - Use LocalPathValidator            |
+|    - Fail fast before expensive builds |
++----------------------------------------+
+         |
+         v
++----------------------------------------+
+| 3. CLEAN & CREATE OUTPUT               |
+|    - Remove existing output directory  |
+|    - Create fresh output directory     |
++----------------------------------------+
+         |
+         v
++----------------------------------------+
+| 4. TSDOC LINT (optional)               |
 |    - Skip if tsdocLint disabled        |
 |    - Dynamic import ESLint + plugins   |
 |    - Lint entry point files            |
@@ -656,7 +806,7 @@ executeBuild(options, target)
          |
          v
 +----------------------------------------+
-| 3. BUN BUILD                           |
+| 5. BUN BUILD                           |
 |    - Convert entries to absolute paths |
 |    - Configure Bun.build() options     |
 |    - Execute bundling                  |
@@ -665,7 +815,7 @@ executeBuild(options, target)
          |
          v
 +----------------------------------------+
-| 4. DECLARATION GENERATION              |
+| 6. DECLARATION GENERATION              |
 |    - Create temp declaration directory |
 |    - Remove stale .tsbuildinfo files   |
 |    - Generate temp tsconfig            |
@@ -674,18 +824,19 @@ executeBuild(options, target)
          |
          v
 +----------------------------------------+
-| 5. DECLARATION BUNDLING                |
+| 7. DECLARATION BUNDLING                |
 |    - Validate API Extractor installed  |
 |    - Find main entry declaration       |
 |    - Configure API Extractor           |
 |    - Bundle to single index.d.ts       |
-|    - Optionally generate API model     |
+|    - Generate API model (npm + enabled)|
+|    - Generate tsdoc-metadata.json      |
 |    - Fallback: copy unbundled .d.ts    |
 +----------------------------------------+
          |
          v
 +----------------------------------------+
-| 6. COPY FILES                          |
+| 8. COPY FILES                          |
 |    - Auto-add public/ directory        |
 |    - Auto-add README.md, LICENSE       |
 |    - Process copyPatterns option       |
@@ -694,7 +845,7 @@ executeBuild(options, target)
          |
          v
 +----------------------------------------+
-| 7. TRANSFORM FILES (optional)          |
+| 9. TRANSFORM FILES (optional)          |
 |    - Call transformFiles callback      |
 |    - Allow user post-processing        |
 |    - Modify files array if needed      |
@@ -702,13 +853,22 @@ executeBuild(options, target)
          |
          v
 +----------------------------------------+
-| 8. WRITE PACKAGE.JSON                  |
+| 10. WRITE PACKAGE.JSON                 |
 |    - Resolve catalog references (npm)  |
 |    - Transform export paths            |
 |    - Apply user transform function     |
 |    - Set private flag for dev          |
 |    - Add files array                   |
 |    - Write to output directory         |
++----------------------------------------+
+         |
+         v
++----------------------------------------+
+| 11. COPY TO LOCAL PATHS (npm only)     |
+|    - Skip in CI environments           |
+|    - Use LocalPathCopier               |
+|    - Copy API model, tsdoc-metadata    |
+|    - Copy package.json                 |
 +----------------------------------------+
          |
          v
@@ -815,7 +975,7 @@ Default: `"throw"` in CI, `"error"` locally
 
 - `boolean` success indicator
 
-#### Phase 5: Declaration Bundling
+#### Phase 7: Declaration Bundling
 
 **Inputs:**
 
@@ -827,17 +987,25 @@ Default: `"throw"` in CI, `"error"` locally
 
 1. Validate API Extractor installed
 2. Find main entry point declaration file
-3. Configure API Extractor:
+3. Resolve API model configuration using `ApiModelConfigResolver`
+4. Configure API Extractor:
    - `mainEntryPointFilePath`
    - `dtsRollup.enabled: true`
-   - `docModel.enabled` based on apiModel option
+   - `docModel.enabled` based on resolved config
+   - `tsdocMetadata.enabled` based on resolved config
    - `bundledPackages` from options
-4. Run API Extractor
-5. Handle failures by copying unbundled declarations
+5. Run API Extractor
+6. Handle failures by copying unbundled declarations
 
 **Outputs:**
 
-- `{ bundledDtsPath?, apiModelPath?, dtsFiles? }`
+- `{ bundledDtsPath?, apiModelPath?, tsdocMetadataPath?, dtsFiles? }`
+
+**Generated Files (when enabled):**
+
+- `index.d.ts` - Bundled TypeScript declarations
+- `<package>.api.json` - API model for documentation tools
+- `tsdoc-metadata.json` - TSDoc custom tag definitions
 
 #### Phase 6: Copy Files
 
@@ -882,7 +1050,7 @@ Default: `"throw"` in CI, `"error"` locally
 - Add/modify output files
 - Update files array as needed
 
-#### Phase 8: Write package.json
+#### Phase 10: Write package.json
 
 **Inputs:**
 
@@ -892,13 +1060,44 @@ Default: `"throw"` in CI, `"error"` locally
 **Operations:**
 
 1. Build user transform function wrapper
-2. Call `buildPackageJson()`:
+2. Call `PackageJsonTransformer.build()`:
    - Resolve catalog references (npm only)
    - Apply build transformations
    - Call user transform
 3. Set `private: true` for dev target
 4. Add sorted files array
 5. Write to `<outdir>/package.json`
+
+#### Phase 11: Copy to Local Paths (npm target only)
+
+**Inputs:**
+
+- `BuildContext`
+- Resolved `ApiModelConfig` from `ApiModelConfigResolver`
+
+**Prerequisites:**
+
+- Build target is `npm`
+- Not running in CI environment
+- `apiModel.localPaths` array is non-empty
+
+**Operations:**
+
+1. Create `LocalPathCopier` with artifact filenames
+2. For each path in `localPaths`:
+   - Resolve path relative to `cwd`
+   - Create destination directory if needed
+   - Copy API model file (if exists)
+   - Copy tsdoc-metadata.json (if exists)
+   - Copy package.json
+3. Log copied files for each destination
+
+**Why skip in CI:**
+
+Local path copying is intended for development workflows where build artifacts
+need to sync with documentation sites. In CI environments, documentation sites
+typically pull artifacts from published packages or build outputs, making local
+copying unnecessary and potentially causing side effects.
 
 ---
 
@@ -962,8 +1161,10 @@ Source package.json
          |
          v
 +----------------------------------------+
-| Production only:                       |
-| resolveCatalogReferences()             |
+| PackageJsonTransformer.build()         |
+|                                        |
+| Production only (isProduction=true):   |
+| PackageJsonTransformer.resolveCatalogReferences()
 |   - Delegates to BunCatalogResolver    |
 |   - Resolves catalog: references       |
 |   - Resolves workspace: references     |
@@ -971,14 +1172,14 @@ Source package.json
          |
          v
 +----------------------------------------+
-| applyBuildTransformations()            |
+| PackageJsonTransformer.applyBuildTransformations()
 |   - Remove publishConfig, scripts      |
 |   - Set private based on publishConfig |
-|   - transformPackageExports()          |
+|   - transformExports()                 |
 |     - .ts/.tsx -> .js                  |
 |     - Add types conditions             |
 |     - Strip src/ prefix                |
-|   - transformPackageBin()              |
+|   - transformBin()                     |
 |   - Transform typesVersions            |
 |   - Transform files array              |
 |   - Sort with sort-package-json        |
@@ -1016,15 +1217,38 @@ Source .ts files
          |
          v
 +----------------------------------------+
+| ApiModelConfigResolver.resolve()       |
+|   - Parse apiModel options             |
+|   - Apply defaults                     |
+|   - Resolve tsdocMetadata settings     |
++----------------------------------------+
+         |
+         v
++----------------------------------------+
 | API Extractor                          |
 |   - Find main entry .d.ts              |
 |   - Bundle all declarations            |
-|   - Optional: Generate API model       |
+|   - Generate API model (if enabled)    |
+|   - Generate tsdoc-metadata.json       |
 +----------------------------------------+
          |
          v
     dist/{target}/index.d.ts
     dist/{target}/<pkg>.api.json (if apiModel)
+    dist/{target}/tsdoc-metadata.json (if apiModel)
+         |
+         v (npm target, non-CI, localPaths configured)
++----------------------------------------+
+| LocalPathCopier                        |
+|   - Copy API model to local paths      |
+|   - Copy tsdoc-metadata.json           |
+|   - Copy package.json                  |
++----------------------------------------+
+         |
+         v
+    {localPath}/<pkg>.api.json
+    {localPath}/tsdoc-metadata.json
+    {localPath}/package.json
 ```
 
 ---
@@ -1078,11 +1302,57 @@ interface BunLibraryBuilderOptions {
 interface ApiModelOptions {
   enabled?: boolean;           // Default: false
   filename?: string;           // Default: "<pkg>.api.json"
-  localPaths?: string[];       // Copy API model to these paths
+  localPaths?: string[];       // Copy artifacts to these paths (see below)
   tsdoc?: TsDocOptions;        // Custom TSDoc configuration
   tsdocMetadata?: TsDocMetadataOptions | boolean;
 }
+
+interface TsDocMetadataOptions {
+  enabled?: boolean;           // Default: true when API model enabled
+  filename?: string;           // Default: "tsdoc-metadata.json"
+}
 ```
+
+#### apiModel.localPaths Feature
+
+The `localPaths` option copies build artifacts to specified directories after
+build completion. This is useful for syncing API documentation with documentation
+sites that need access to API models.
+
+**Artifacts copied:**
+
+- API model file (e.g., `my-package.api.json`)
+- TSDoc metadata file (`tsdoc-metadata.json`)
+- Transformed `package.json`
+
+**Behavior:**
+
+- Only runs for `npm` target
+- Skipped in CI environments (detected via `CI` or `GITHUB_ACTIONS` env vars)
+- Validates parent directories exist before build starts (fail-fast)
+- Creates destination directories if they don't exist
+
+**Example:**
+
+```typescript
+import { BunLibraryBuilder } from '@savvy-web/bun-builder';
+
+export default BunLibraryBuilder.create({
+  apiModel: {
+    enabled: true,
+    localPaths: [
+      '../website/docs/api/my-package',  // Relative to project root
+      './docs/api',                       // Also relative
+    ],
+  },
+});
+```
+
+**Validation:**
+
+Parent directories of each path must exist. For example, if `localPaths`
+includes `../website/docs/api/my-package`, then `../website/docs/api` must
+exist. The final directory (`my-package`) will be created automatically.
 
 ### TsDocLintOptions
 
@@ -1296,7 +1566,14 @@ bun test --watch
 
 ---
 
-**Document Status:** Current - Core architecture documented with all components
+**Document Status:** Current - Fully documented including class-based API refactoring
+and localPaths feature
 
-**Next Steps:** Add integration examples, document edge cases in transformation
-pipeline
+**Recent Changes (feat/local-paths branch):**
+
+- Refactored utility functions to static methods on classes
+- Added `ApiModelConfigResolver` for centralizing API model option parsing
+- Added `LocalPathCopier` for copying artifacts to local directories
+- Added `LocalPathValidator` for path validation
+- Added `apiModel.localPaths` feature for documentation site integration
+- Added `tsdoc-metadata.json` generation when API model is enabled

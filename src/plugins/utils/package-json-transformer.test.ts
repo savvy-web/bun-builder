@@ -4,114 +4,109 @@
 
 import { describe, expect, test } from "bun:test";
 import type { PackageJson } from "../../types/package-json.js";
-import {
-	applyBuildTransformations,
-	createTypePath,
-	isConditionsObject,
-	transformExportPath,
-	transformPackageBin,
-	transformPackageExports,
-} from "./package-json-transformer.js";
+import { PackageJsonTransformer } from "./package-json-transformer.js";
 
-describe("transformExportPath", () => {
+describe("PackageJsonTransformer.transformExportPath", () => {
 	describe("prefix stripping", () => {
 		test("strips ./src/ prefix", () => {
-			expect(transformExportPath("./src/index.ts")).toBe("./index.js");
+			expect(PackageJsonTransformer.transformExportPath("./src/index.ts")).toBe("./index.js");
 		});
 
 		test("strips ./exports/ prefix", () => {
-			expect(transformExportPath("./exports/api.ts")).toBe("./api.js");
+			expect(PackageJsonTransformer.transformExportPath("./exports/api.ts")).toBe("./api.js");
 		});
 
 		test("strips ./public/ prefix", () => {
-			expect(transformExportPath("./public/assets.ts")).toBe("./assets.js");
+			expect(PackageJsonTransformer.transformExportPath("./public/assets.ts")).toBe("./assets.js");
 		});
 
 		test("preserves paths without known prefixes", () => {
-			expect(transformExportPath("./lib/index.ts")).toBe("./lib/index.js");
+			expect(PackageJsonTransformer.transformExportPath("./lib/index.ts")).toBe("./lib/index.js");
 		});
 	});
 
 	describe("extension conversion", () => {
 		test("converts .ts to .js", () => {
-			expect(transformExportPath("./index.ts")).toBe("./index.js");
+			expect(PackageJsonTransformer.transformExportPath("./index.ts")).toBe("./index.js");
 		});
 
 		test("converts .tsx to .js", () => {
-			expect(transformExportPath("./component.tsx")).toBe("./component.js");
+			expect(PackageJsonTransformer.transformExportPath("./component.tsx")).toBe("./component.js");
 		});
 
 		test("preserves .d.ts files", () => {
-			expect(transformExportPath("./types.d.ts")).toBe("./types.d.ts");
+			expect(PackageJsonTransformer.transformExportPath("./types.d.ts")).toBe("./types.d.ts");
 		});
 
 		test("preserves .js files", () => {
-			expect(transformExportPath("./index.js")).toBe("./index.js");
+			expect(PackageJsonTransformer.transformExportPath("./index.js")).toBe("./index.js");
 		});
 	});
 
 	describe("index collapsing", () => {
 		test("collapses /index.ts to .js when enabled", () => {
-			expect(transformExportPath("./src/utils/index.ts", true, true)).toBe("./utils.js");
+			expect(PackageJsonTransformer.transformExportPath("./src/utils/index.ts", true, true)).toBe("./utils.js");
 		});
 
 		test("collapses /index.tsx to .js when enabled", () => {
-			expect(transformExportPath("./src/components/index.tsx", true, true)).toBe("./components.js");
+			expect(PackageJsonTransformer.transformExportPath("./src/components/index.tsx", true, true)).toBe(
+				"./components.js",
+			);
 		});
 
 		test("does not collapse root ./index.ts", () => {
-			expect(transformExportPath("./index.ts", true, true)).toBe("./index.js");
+			expect(PackageJsonTransformer.transformExportPath("./index.ts", true, true)).toBe("./index.js");
 		});
 
 		test("does not collapse when disabled", () => {
-			expect(transformExportPath("./src/utils/index.ts", true, false)).toBe("./utils/index.js");
+			expect(PackageJsonTransformer.transformExportPath("./src/utils/index.ts", true, false)).toBe("./utils/index.js");
 		});
 	});
 
 	describe("processTSExports flag", () => {
 		test("skips TS processing when false", () => {
-			expect(transformExportPath("./src/index.ts", false)).toBe("./index.ts");
+			expect(PackageJsonTransformer.transformExportPath("./src/index.ts", false)).toBe("./index.ts");
 		});
 	});
 });
 
-describe("createTypePath", () => {
+describe("PackageJsonTransformer.createTypePath", () => {
 	test("converts .js to .d.ts", () => {
-		expect(createTypePath("./index.js")).toBe("./index.d.ts");
+		expect(PackageJsonTransformer.createTypePath("./index.js")).toBe("./index.d.ts");
 	});
 
 	test("collapses /index.js when enabled", () => {
-		expect(createTypePath("./utils/index.js", true)).toBe("./utils.d.ts");
+		expect(PackageJsonTransformer.createTypePath("./utils/index.js", true)).toBe("./utils.d.ts");
 	});
 
 	test("does not collapse root ./index.js", () => {
-		expect(createTypePath("./index.js", true)).toBe("./index.d.ts");
+		expect(PackageJsonTransformer.createTypePath("./index.js", true)).toBe("./index.d.ts");
 	});
 
 	test("does not collapse when disabled", () => {
-		expect(createTypePath("./utils/index.js", false)).toBe("./utils/index.d.ts");
+		expect(PackageJsonTransformer.createTypePath("./utils/index.js", false)).toBe("./utils/index.d.ts");
 	});
 
 	test("handles paths without .js extension", () => {
-		expect(createTypePath("./utils")).toBe("./utils.d.ts");
+		expect(PackageJsonTransformer.createTypePath("./utils")).toBe("./utils.d.ts");
 	});
 });
 
-describe("transformPackageBin", () => {
+describe("PackageJsonTransformer.transformBin", () => {
 	test("transforms string bin path", () => {
-		expect(transformPackageBin("./src/cli.ts")).toBe("./bin/cli.js");
+		expect(PackageJsonTransformer.transformBin("./src/cli.ts")).toBe("./bin/cli.js");
 	});
 
 	test("transforms tsx bin path", () => {
-		expect(transformPackageBin("./src/cli.tsx")).toBe("./bin/cli.js");
+		expect(PackageJsonTransformer.transformBin("./src/cli.tsx")).toBe("./bin/cli.js");
 	});
 
 	test("preserves non-TypeScript bin paths", () => {
-		expect(transformPackageBin("./bin/cli.js")).toBe("./bin/cli.js");
+		expect(PackageJsonTransformer.transformBin("./bin/cli.js")).toBe("./bin/cli.js");
 	});
 
 	test("transforms object bin with multiple commands", () => {
-		const result = transformPackageBin({
+		const result = PackageJsonTransformer.transformBin({
 			"my-cli": "./src/bin/cli.ts",
 			"my-tool": "./src/bin/tool.ts",
 		});
@@ -123,7 +118,7 @@ describe("transformPackageBin", () => {
 	});
 
 	test("preserves non-TypeScript entries in object bin", () => {
-		const result = transformPackageBin({
+		const result = PackageJsonTransformer.transformBin({
 			"my-cli": "./bin/cli.js",
 		});
 
@@ -133,35 +128,35 @@ describe("transformPackageBin", () => {
 	});
 
 	test("handles undefined bin", () => {
-		expect(transformPackageBin(undefined)).toBeUndefined();
+		expect(PackageJsonTransformer.transformBin(undefined)).toBeUndefined();
 	});
 });
 
-describe("isConditionsObject", () => {
+describe("PackageJsonTransformer.isConditionsObject", () => {
 	test("returns true for import condition", () => {
-		expect(isConditionsObject({ import: "./index.js" })).toBe(true);
+		expect(PackageJsonTransformer.isConditionsObject({ import: "./index.js" })).toBe(true);
 	});
 
 	test("returns true for require condition", () => {
-		expect(isConditionsObject({ require: "./index.cjs" })).toBe(true);
+		expect(PackageJsonTransformer.isConditionsObject({ require: "./index.cjs" })).toBe(true);
 	});
 
 	test("returns true for types condition", () => {
-		expect(isConditionsObject({ types: "./index.d.ts" })).toBe(true);
+		expect(PackageJsonTransformer.isConditionsObject({ types: "./index.d.ts" })).toBe(true);
 	});
 
 	test("returns true for default condition", () => {
-		expect(isConditionsObject({ default: "./index.js" })).toBe(true);
+		expect(PackageJsonTransformer.isConditionsObject({ default: "./index.js" })).toBe(true);
 	});
 
 	test("returns false for subpath exports", () => {
-		expect(isConditionsObject({ ".": "./index.js", "./utils": "./utils.js" })).toBe(false);
+		expect(PackageJsonTransformer.isConditionsObject({ ".": "./index.js", "./utils": "./utils.js" })).toBe(false);
 	});
 });
 
-describe("transformPackageExports", () => {
+describe("PackageJsonTransformer.transformExports", () => {
 	test("transforms string export to conditional export", () => {
-		const result = transformPackageExports("./src/index.ts");
+		const result = PackageJsonTransformer.transformExports("./src/index.ts");
 
 		expect(result).toEqual({
 			types: "./index.d.ts",
@@ -170,7 +165,7 @@ describe("transformPackageExports", () => {
 	});
 
 	test("transforms subpath exports", () => {
-		const result = transformPackageExports({
+		const result = PackageJsonTransformer.transformExports({
 			".": "./src/index.ts",
 			"./utils": "./src/utils.ts",
 		});
@@ -188,7 +183,7 @@ describe("transformPackageExports", () => {
 	});
 
 	test("transforms existing conditional exports", () => {
-		const result = transformPackageExports({
+		const result = PackageJsonTransformer.transformExports({
 			import: "./src/index.ts",
 			types: "./src/index.d.ts",
 		});
@@ -200,7 +195,7 @@ describe("transformPackageExports", () => {
 	});
 
 	test("transforms nested conditional exports", () => {
-		const result = transformPackageExports({
+		const result = PackageJsonTransformer.transformExports({
 			".": {
 				import: "./src/index.ts",
 				types: "./src/index.d.ts",
@@ -216,7 +211,7 @@ describe("transformPackageExports", () => {
 	});
 
 	test("handles array exports", () => {
-		const result = transformPackageExports(["./src/index.ts", "./src/fallback.ts"]);
+		const result = PackageJsonTransformer.transformExports(["./src/index.ts", "./src/fallback.ts"]);
 
 		expect(result).toEqual([
 			{
@@ -231,18 +226,18 @@ describe("transformPackageExports", () => {
 	});
 
 	test("handles null and undefined", () => {
-		expect(transformPackageExports(null)).toBeNull();
-		expect(transformPackageExports(undefined)).toBeUndefined();
+		expect(PackageJsonTransformer.transformExports(null)).toBeNull();
+		expect(PackageJsonTransformer.transformExports(undefined)).toBeUndefined();
 	});
 
 	test("skips TS processing when disabled", () => {
-		const result = transformPackageExports("./src/index.ts", false);
+		const result = PackageJsonTransformer.transformExports("./src/index.ts", false);
 
 		expect(result).toBe("./index.ts");
 	});
 
 	test("collapses index files when enabled", () => {
-		const result = transformPackageExports("./src/utils/index.ts", true, undefined, true);
+		const result = PackageJsonTransformer.transformExports("./src/utils/index.ts", true, undefined, true);
 
 		expect(result).toEqual({
 			types: "./utils.d.ts",
@@ -251,7 +246,7 @@ describe("transformPackageExports", () => {
 	});
 });
 
-describe("applyBuildTransformations", () => {
+describe("PackageJsonTransformer.applyBuildTransformations", () => {
 	test("removes publishConfig and scripts", () => {
 		const pkg: PackageJson = {
 			name: "test-package",
@@ -259,7 +254,7 @@ describe("applyBuildTransformations", () => {
 			scripts: { build: "tsc" },
 		};
 
-		const result = applyBuildTransformations(pkg, pkg);
+		const result = PackageJsonTransformer.applyBuildTransformations(pkg, pkg);
 
 		expect(result.publishConfig).toBeUndefined();
 		expect(result.scripts).toBeUndefined();
@@ -271,7 +266,7 @@ describe("applyBuildTransformations", () => {
 			publishConfig: { access: "public" },
 		};
 
-		const result = applyBuildTransformations(pkg, pkg);
+		const result = PackageJsonTransformer.applyBuildTransformations(pkg, pkg);
 
 		expect(result.private).toBe(false);
 	});
@@ -282,7 +277,7 @@ describe("applyBuildTransformations", () => {
 			publishConfig: { access: "restricted" },
 		};
 
-		const result = applyBuildTransformations(pkg, pkg);
+		const result = PackageJsonTransformer.applyBuildTransformations(pkg, pkg);
 
 		expect(result.private).toBe(true);
 	});
@@ -292,7 +287,7 @@ describe("applyBuildTransformations", () => {
 			name: "test-package",
 		};
 
-		const result = applyBuildTransformations(pkg, pkg);
+		const result = PackageJsonTransformer.applyBuildTransformations(pkg, pkg);
 
 		expect(result.private).toBe(true);
 	});
@@ -305,7 +300,7 @@ describe("applyBuildTransformations", () => {
 			},
 		};
 
-		const result = applyBuildTransformations(pkg, pkg);
+		const result = PackageJsonTransformer.applyBuildTransformations(pkg, pkg);
 
 		expect(result.exports).toEqual({
 			".": {
@@ -323,7 +318,7 @@ describe("applyBuildTransformations", () => {
 			},
 		};
 
-		const result = applyBuildTransformations(pkg, pkg);
+		const result = PackageJsonTransformer.applyBuildTransformations(pkg, pkg);
 
 		expect(result.bin).toEqual({
 			cli: "./bin/cli.js",
@@ -336,7 +331,7 @@ describe("applyBuildTransformations", () => {
 			files: ["./public/assets", "public/config"],
 		};
 
-		const result = applyBuildTransformations(original, original);
+		const result = PackageJsonTransformer.applyBuildTransformations(original, original);
 
 		expect(result.files).toEqual(["assets", "config"]);
 	});
@@ -351,7 +346,7 @@ describe("applyBuildTransformations", () => {
 			},
 		};
 
-		const result = applyBuildTransformations(original, original);
+		const result = PackageJsonTransformer.applyBuildTransformations(original, original);
 
 		expect(result.typesVersions).toEqual({
 			"*": {
@@ -367,7 +362,7 @@ describe("applyBuildTransformations", () => {
 			description: "Test",
 		};
 
-		const result = applyBuildTransformations(pkg, pkg);
+		const result = PackageJsonTransformer.applyBuildTransformations(pkg, pkg);
 
 		// sort-package-json puts name before version
 		const keys = Object.keys(result);

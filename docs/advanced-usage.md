@@ -11,6 +11,8 @@ extending its functionality.
 - [Custom Bun Plugins](#custom-bun-plugins)
 - [Monorepo Integration](#monorepo-integration)
 - [CI/CD Integration](#cicd-integration)
+- [Utility Classes](#utility-classes)
+- [Type Exports](#type-exports)
 
 ---
 
@@ -485,6 +487,237 @@ build();
 
 ---
 
+## Utility Classes
+
+The package exports several utility classes for advanced use cases. All methods
+are static for convenience.
+
+### PackageJsonTransformer
+
+Transforms package.json fields for build output compatibility.
+
+```typescript
+import { PackageJsonTransformer } from '@savvy-web/bun-builder';
+
+// Transform a source path to output path
+const jsPath = PackageJsonTransformer.transformExportPath('./src/index.ts');
+// Returns: "./index.js"
+
+// Create type declaration path from JS path
+const dtsPath = PackageJsonTransformer.createTypePath('./index.js');
+// Returns: "./index.d.ts"
+
+// Transform exports field for build output
+const exports = PackageJsonTransformer.transformExports({
+  '.': './src/index.ts',
+  './utils': './src/utils.ts',
+});
+// Returns: {
+//   '.': { types: './index.d.ts', import: './index.js' },
+//   './utils': { types: './utils.d.ts', import: './utils.js' }
+// }
+
+// Transform bin field
+const bin = PackageJsonTransformer.transformBin({
+  'my-cli': './src/cli.ts',
+});
+// Returns: { 'my-cli': './bin/my-cli.js' }
+
+// Apply all build transformations to package.json
+const transformed = PackageJsonTransformer.applyBuildTransformations(
+  originalPackageJson,
+  sourcePackageJson,
+);
+```
+
+### FileSystemUtils
+
+File system operations for build tooling.
+
+```typescript
+import { FileSystemUtils } from '@savvy-web/bun-builder';
+
+// Check if a file exists
+const result = await FileSystemUtils.fileExistsAsync('package.json');
+if (result.assetExists) {
+  console.log(`Found at: ${result.assetPath}`);
+}
+
+// Get package.json version
+const version = await FileSystemUtils.packageJsonVersion();
+// Returns: "1.0.0"
+
+// Find workspace root (directory with workspaces field)
+const root = FileSystemUtils.findWorkspaceRoot();
+// Returns: "/path/to/workspace" or null
+
+// Get API Extractor executable path
+const apiExtractor = FileSystemUtils.getApiExtractorPath();
+
+// Get tsgo binary path
+const tsgo = FileSystemUtils.getTsgoBinPath();
+
+// Get unscoped package name
+const name = FileSystemUtils.getUnscopedPackageName('@savvy-web/bun-builder');
+// Returns: "bun-builder"
+```
+
+### LocalPathValidator
+
+Validates paths for the `apiModel.localPaths` feature.
+
+```typescript
+import { LocalPathValidator } from '@savvy-web/bun-builder';
+
+// Validate multiple paths (throws if parent directories don't exist)
+LocalPathValidator.validatePaths(process.cwd(), [
+  '../docs/api/my-package',
+  '../website/lib/packages/my-package',
+]);
+
+// Check if a single path is valid
+const isValid = LocalPathValidator.isValidPath(process.cwd(), '../docs/api');
+// Returns: true if parent directory exists
+```
+
+### BuildLogger
+
+Logging and formatting utilities for build operations.
+
+```typescript
+import { BuildLogger } from '@savvy-web/bun-builder';
+
+// Check environment
+const isCI = BuildLogger.isCI();
+const isTest = BuildLogger.isTestEnvironment();
+
+// Format values
+const time = BuildLogger.formatTime(1500);
+// Returns: "1.50 s"
+
+const size = BuildLogger.formatSize(10240);
+// Returns: "10.00 kB"
+
+// Create a timer
+const timer = BuildLogger.createTimer();
+// ... do work ...
+console.log(`Completed in ${timer.format()}`);
+
+// Create loggers
+const logger = BuildLogger.createLogger('my-plugin');
+logger.info('Processing...');
+logger.warn('Something to note');
+logger.error('Something failed');
+logger.success('Completed!');
+
+// Create environment-aware logger
+const envLogger = BuildLogger.createEnvLogger('npm');
+envLogger.info('Building...');
+// Output: info    [npm] Building...
+
+// Collect file info for output table
+const files = await BuildLogger.collectFileInfo(outdir, ['index.js', 'index.d.ts']);
+BuildLogger.printFileTable(files, outdir, 'npm');
+
+// Print build summary
+BuildLogger.printSummary(['dev', 'npm'], 1500);
+```
+
+### ApiModelConfigResolver
+
+Resolves API model configuration options with environment variable support.
+
+```typescript
+import { ApiModelConfigResolver } from '@savvy-web/bun-builder';
+
+// Resolve configuration from various input formats
+const config = ApiModelConfigResolver.resolve(options.apiModel, 'my-package');
+
+// config contains:
+// {
+//   enabled: true,
+//   filename: 'my-package.api.json',
+//   localPaths: [],
+//   tsdocMetadataEnabled: true,
+//   tsdocMetadataFilename: 'tsdoc-metadata.json',
+// }
+
+// Get local paths from BUN_BUILDER_LOCAL_PATHS environment variable
+const envPaths = ApiModelConfigResolver.getEnvLocalPaths();
+
+// Merge user paths with environment paths (user paths take precedence)
+const allPaths = ApiModelConfigResolver.resolveLocalPaths(['../user/path']);
+```
+
+#### Environment Variable
+
+The `BUN_BUILDER_LOCAL_PATHS` environment variable defines additional local paths
+for copying build artifacts. Create a `.env.local` file:
+
+```env
+BUN_BUILDER_LOCAL_PATHS=../docs/api,../website/packages/my-lib
+```
+
+Paths are comma-separated. When both the environment variable and `apiModel.localPaths`
+are set, the paths are merged with user-defined paths taking precedence (appearing first).
+
+### EntryExtractor
+
+Extracts entry points from package.json exports.
+
+```typescript
+import type { PackageJson } from '@savvy-web/bun-builder';
+import { EntryExtractor } from '@savvy-web/bun-builder';
+
+const packageJson: PackageJson = {
+  exports: {
+    '.': './src/index.ts',
+    './utils': './src/utils.ts',
+  },
+};
+
+const entries = EntryExtractor.extractEntries(packageJson);
+// Returns: { index: './src/index.ts', utils: './src/utils.ts' }
+
+// Also extracts from bin field
+const binEntries = EntryExtractor.extractBinEntries(packageJson);
+```
+
+### BunCatalogResolver
+
+Resolves Bun's `catalog:` and `workspace:` protocols.
+
+```typescript
+import type { PackageJson } from '@savvy-web/bun-builder';
+import { BunCatalogResolver } from '@savvy-web/bun-builder';
+
+const resolver = new BunCatalogResolver();
+
+// Find workspace root
+const root = resolver.findWorkspaceRoot();
+
+// Get catalogs from workspace root
+const catalogs = await resolver.getCatalogs();
+// Returns: { default: { react: '^19.0.0' }, named: { testing: { vitest: '^4.0.0' } } }
+
+// Resolve a single reference
+const version = await resolver.resolveReference('catalog:', 'react');
+// Returns: "^19.0.0"
+
+// Resolve all references in a package.json
+const packageJson: PackageJson = {
+  dependencies: {
+    react: 'catalog:',
+    vitest: 'catalog:testing',
+  },
+};
+
+const resolved = await resolver.resolvePackageJson(packageJson);
+// Returns package.json with resolved versions
+```
+
+---
+
 ## Type Exports
 
 All types are exported for use in your build configuration:
@@ -517,6 +750,9 @@ import type {
 
   // Entry points
   EntryPoints,
+
+  // Package.json type
+  PackageJson,
 } from '@savvy-web/bun-builder';
 ```
 
