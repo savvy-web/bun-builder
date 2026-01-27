@@ -15,6 +15,7 @@
  * 5. **File Copying**: Copies additional assets to output
  * 6. **File Transform** (optional): User-defined post-processing
  * 7. **Package.json Write**: Transforms and writes package.json
+ * 8. **Local Path Copy** (optional): Copies API artifacts to local paths
  *
  * @packageDocumentation
  */
@@ -25,22 +26,9 @@ import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
 import type { BuildArtifact } from "bun";
 import { EntryExtractor } from "../plugins/utils/entry-extractor.js";
-import {
-	getApiExtractorPath,
-	getTsgoBinPath,
-	getUnscopedPackageName,
-	packageJsonVersion,
-} from "../plugins/utils/file-utils.js";
-import {
-	collectFileInfo,
-	createEnvLogger,
-	createLogger,
-	createTimer,
-	formatTime,
-	isCI,
-	printFileTable,
-} from "../plugins/utils/logger.js";
-import { buildPackageJson } from "../plugins/utils/package-json-transformer.js";
+import { FileSystemUtils, LocalPathValidator } from "../plugins/utils/file-utils.js";
+import { BuildLogger } from "../plugins/utils/logger.js";
+import { PackageJsonTransformer } from "../plugins/utils/package-json-transformer.js";
 import type {
 	ApiModelOptions,
 	BuildResult,
@@ -50,6 +38,271 @@ import type {
 	TsDocLintOptions,
 } from "../types/builder-types.js";
 import type { PackageJson } from "../types/package-json.js";
+
+/**
+ * Resolved API model configuration values.
+ *
+ * @remarks
+ * This interface contains the fully resolved configuration for API model
+ * generation, with all defaults applied and filenames computed.
+ *
+ * @public
+ */
+export interface ResolvedApiModelConfig {
+	/** Whether API model generation is enabled */
+	enabled: boolean;
+	/** Filename for the API model JSON file */
+	filename: string;
+	/** Whether TSDoc metadata generation is enabled */
+	tsdocMetadataEnabled: boolean;
+	/** Filename for the TSDoc metadata file */
+	tsdocMetadataFilename: string;
+	/** Local paths to copy artifacts to (if any) */
+	localPaths: string[];
+}
+
+/**
+ * Resolves API model configuration from builder options.
+ *
+ * @remarks
+ * This class centralizes the logic for parsing and resolving `ApiModelOptions`
+ * into concrete configuration values. It handles the various forms the options
+ * can take (`boolean`, `object`, or `undefined`) and applies appropriate defaults.
+ *
+ * The resolver is used by both `runApiExtractor` and `executeBuild` to ensure
+ * consistent configuration parsing throughout the build pipeline.
+ *
+ * ## Environment Variable Support
+ *
+ * The resolver supports the `BUN_BUILDER_LOCAL_PATHS` environment variable for
+ * defining local paths without modifying the build configuration. This is useful
+ * for developer-specific paths that shouldn't be committed to version control.
+ *
+ * The environment variable should contain comma-separated paths:
+ *
+ * ```env
+ * BUN_BUILDER_LOCAL_PATHS=../docs/api,../website/packages/my-lib
+ * ```
+ *
+ * Bun automatically loads `.env` files, so you can define this in:
+ * - `.env.local` (highest priority, typically gitignored)
+ * - `.env.development` or `.env.production` (based on NODE_ENV)
+ * - `.env` (lowest priority)
+ *
+ * When both the environment variable and `apiModel.localPaths` are set, the
+ * paths are merged with user-defined paths taking precedence (appearing first).
+ *
+ * @example
+ * Resolve API model configuration:
+ * ```typescript
+ * import { ApiModelConfigResolver } from '@savvy-web/bun-builder';
+ * import type { ApiModelOptions } from '@savvy-web/bun-builder';
+ *
+ * const options: ApiModelOptions = {
+ *   enabled: true,
+ *   localPaths: ['../docs/api'],
+ * };
+ *
+ * const config = ApiModelConfigResolver.resolve(options, 'my-package');
+ * console.log(config.filename); // "my-package.api.json"
+ * console.log(config.tsdocMetadataFilename); // "tsdoc-metadata.json"
+ * ```
+ *
+ * @public
+ */
+// biome-ignore lint/complexity/noStaticOnlyClass: Intentional static-only class for API organization
+export class ApiModelConfigResolver {
+	/**
+	 * Environment variable name for defining local paths.
+	 *
+	 * @remarks
+	 * When set, this environment variable provides additional local paths
+	 * for copying build artifacts. The value should be comma-separated paths.
+	 *
+	 * @example
+	 * ```env
+	 * BUN_BUILDER_LOCAL_PATHS=../docs/api,../website/packages/my-lib
+	 * ```
+	 */
+	static readonly ENV_LOCAL_PATHS = "BUN_BUILDER_LOCAL_PATHS";
+
+	/**
+	 * Default filename for TSDoc metadata.
+	 */
+	static readonly DEFAULT_TSDOC_METADATA_FILENAME = "tsdoc-metadata.json";
+
+	/**
+	 * Resolves API model options into a complete configuration object.
+	 *
+	 * @remarks
+	 * Handles the following input forms:
+	 * - `undefined`: Returns disabled configuration
+	 * - `true`: Returns enabled configuration with all defaults
+	 * - `false`: Returns disabled configuration
+	 * - `ApiModelOptions`: Merges provided options with defaults
+	 *
+	 * @param apiModel - The API model options from builder configuration
+	 * @param unscopedPackageName - The unscoped package name for default filename
+	 * @returns Fully resolved configuration object
+	 *
+	 * @example
+	 * ```typescript
+	 * import { ApiModelConfigResolver } from '@savvy-web/bun-builder';
+	 * import type { ApiModelOptions } from '@savvy-web/bun-builder';
+	 *
+	 * // From boolean
+	 * const config1 = ApiModelConfigResolver.resolve(true, 'my-package');
+	 *
+	 * // From options object
+	 * const options: ApiModelOptions = {
+	 *   filename: 'custom.api.json',
+	 *   tsdocMetadata: { filename: 'custom-metadata.json' },
+	 * };
+	 * const config2 = ApiModelConfigResolver.resolve(options, 'my-package');
+	 * ```
+	 */
+	static resolve(apiModel: ApiModelOptions | boolean | undefined, unscopedPackageName: string): ResolvedApiModelConfig {
+		// Get merged local paths (user-defined + environment variable)
+		const userLocalPaths = typeof apiModel === "object" && apiModel !== null ? (apiModel.localPaths ?? []) : [];
+		const localPaths = ApiModelConfigResolver.resolveLocalPaths(userLocalPaths);
+
+		if (apiModel === undefined || apiModel === false) {
+			return {
+				enabled: false,
+				filename: `${unscopedPackageName}.api.json`,
+				tsdocMetadataEnabled: false,
+				tsdocMetadataFilename: ApiModelConfigResolver.DEFAULT_TSDOC_METADATA_FILENAME,
+				localPaths,
+			};
+		}
+
+		if (apiModel === true) {
+			return {
+				enabled: true,
+				filename: `${unscopedPackageName}.api.json`,
+				tsdocMetadataEnabled: true,
+				tsdocMetadataFilename: ApiModelConfigResolver.DEFAULT_TSDOC_METADATA_FILENAME,
+				localPaths,
+			};
+		}
+
+		const enabled = apiModel.enabled !== false;
+		const filename = apiModel.filename ?? `${unscopedPackageName}.api.json`;
+
+		const tsdocMetadataOption = apiModel.tsdocMetadata;
+		const tsdocMetadataEnabled = ApiModelConfigResolver.resolveTsdocMetadataEnabled(tsdocMetadataOption, enabled);
+		const tsdocMetadataFilename = ApiModelConfigResolver.resolveTsdocMetadataFilename(tsdocMetadataOption);
+
+		return {
+			enabled,
+			filename,
+			tsdocMetadataEnabled,
+			tsdocMetadataFilename,
+			localPaths,
+		};
+	}
+
+	/**
+	 * Resolves whether TSDoc metadata generation is enabled.
+	 *
+	 * @remarks
+	 * TSDoc metadata defaults to enabled when the API model is enabled,
+	 * unless explicitly disabled via the `tsdocMetadata` option.
+	 *
+	 * @param option - The tsdocMetadata option value
+	 * @param apiModelEnabled - Whether the API model itself is enabled
+	 * @returns Whether TSDoc metadata should be generated
+	 */
+	private static resolveTsdocMetadataEnabled(
+		option: ApiModelOptions["tsdocMetadata"],
+		apiModelEnabled: boolean,
+	): boolean {
+		if (option === true) {
+			return true;
+		}
+		if (option === false) {
+			return false;
+		}
+		if (typeof option === "object") {
+			return option.enabled !== false;
+		}
+		return apiModelEnabled;
+	}
+
+	/**
+	 * Resolves the TSDoc metadata filename.
+	 *
+	 * @param option - The tsdocMetadata option value
+	 * @returns The filename to use for TSDoc metadata
+	 */
+	private static resolveTsdocMetadataFilename(option: ApiModelOptions["tsdocMetadata"]): string {
+		if (typeof option === "object" && option.filename) {
+			return option.filename;
+		}
+		return ApiModelConfigResolver.DEFAULT_TSDOC_METADATA_FILENAME;
+	}
+
+	/**
+	 * Parses local paths from the environment variable.
+	 *
+	 * @remarks
+	 * Reads the `BUN_BUILDER_LOCAL_PATHS` environment variable and parses
+	 * it as a comma-separated list of paths. Empty segments are filtered out.
+	 *
+	 * Bun automatically loads `.env` files before this is called, so paths
+	 * can be defined in `.env.local` or other environment files.
+	 *
+	 * @returns Array of paths from the environment variable, or empty array if not set
+	 *
+	 * @example
+	 * ```typescript
+	 * // With BUN_BUILDER_LOCAL_PATHS="../docs/api,../website/lib"
+	 * const paths = ApiModelConfigResolver.getEnvLocalPaths();
+	 * // Returns: ['../docs/api', '../website/lib']
+	 * ```
+	 */
+	static getEnvLocalPaths(): string[] {
+		const envValue = process.env[ApiModelConfigResolver.ENV_LOCAL_PATHS];
+		if (!envValue) {
+			return [];
+		}
+
+		return envValue
+			.split(",")
+			.map((path) => path.trim())
+			.filter((path) => path.length > 0);
+	}
+
+	/**
+	 * Merges user-defined local paths with environment variable paths.
+	 *
+	 * @remarks
+	 * Combines paths from the `apiModel.localPaths` option with paths from
+	 * the `BUN_BUILDER_LOCAL_PATHS` environment variable. User-defined paths
+	 * appear first and take precedence. Duplicate paths are removed.
+	 *
+	 * @param userPaths - Paths defined in the apiModel.localPaths option
+	 * @returns Merged array of unique paths
+	 *
+	 * @example
+	 * ```typescript
+	 * // With BUN_BUILDER_LOCAL_PATHS="../env/path"
+	 * const merged = ApiModelConfigResolver.resolveLocalPaths(['../user/path']);
+	 * // Returns: ['../user/path', '../env/path']
+	 * ```
+	 */
+	static resolveLocalPaths(userPaths: string[] = []): string[] {
+		const envPaths = ApiModelConfigResolver.getEnvLocalPaths();
+
+		if (userPaths.length === 0 && envPaths.length === 0) {
+			return [];
+		}
+
+		// User paths first, then env paths, deduplicated
+		const allPaths = [...userPaths, ...envPaths];
+		return [...new Set(allPaths)];
+	}
+}
 
 /**
  * Context passed to build lifecycle hooks.
@@ -124,7 +377,7 @@ export interface BuildContext {
  * @public
  */
 export async function runTsDocLint(context: BuildContext, options: TsDocLintOptions): Promise<void> {
-	const logger = createLogger("tsdoc-lint");
+	const logger = BuildLogger.createLogger("tsdoc-lint");
 
 	if (options.enabled === false) {
 		return;
@@ -188,7 +441,7 @@ export async function runTsDocLint(context: BuildContext, options: TsDocLintOpti
 		return;
 	}
 
-	const onError = options.onError ?? (isCI() ? "throw" : "error");
+	const onError = options.onError ?? (BuildLogger.isCI() ? "throw" : "error");
 
 	if (errorCount > 0) {
 		const message = `TSDoc validation found ${errorCount} error(s)`;
@@ -221,8 +474,8 @@ export async function runTsDocLint(context: BuildContext, options: TsDocLintOpti
  * @public
  */
 export async function runBunBuild(context: BuildContext): Promise<{ outputs: BuildArtifact[]; success: boolean }> {
-	const logger = createEnvLogger(context.target);
-	const timer = createTimer();
+	const logger = BuildLogger.createEnvLogger(context.target);
+	const timer = BuildLogger.createTimer();
 
 	logger.info("build started...");
 
@@ -391,7 +644,7 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 		}
 	}
 
-	logger.info(`Bundled ${renamedOutputs.length} file(s) in ${formatTime(timer.elapsed())}`);
+	logger.info(`Bundled ${renamedOutputs.length} file(s) in ${BuildLogger.formatTime(timer.elapsed())}`);
 
 	return { outputs: renamedOutputs, success: true };
 }
@@ -414,12 +667,12 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
  * @public
  */
 export async function runTsgoGeneration(context: BuildContext, tempDtsDir: string): Promise<boolean> {
-	const logger = createEnvLogger(context.target);
-	const timer = createTimer();
+	const logger = BuildLogger.createEnvLogger(context.target);
+	const timer = BuildLogger.createTimer();
 
 	logger.info("Generating declaration files...");
 
-	const tsgoBinPath = getTsgoBinPath();
+	const tsgoBinPath = FileSystemUtils.getTsgoBinPath();
 
 	// Delete tsbuildinfo files to force rebuild (needed for composite projects)
 	// Without this, tsgo may skip generation if it thinks nothing changed
@@ -465,7 +718,7 @@ export async function runTsgoGeneration(context: BuildContext, tempDtsDir: strin
 
 		child.on("close", (code) => {
 			if (code === 0) {
-				logger.info(`Generated declarations in ${formatTime(timer.elapsed())}`);
+				logger.info(`Generated declarations in ${BuildLogger.formatTime(timer.elapsed())}`);
 				resolve(true);
 			} else {
 				logger.error(`tsgo failed with code ${code}`);
@@ -496,7 +749,7 @@ export async function runTsgoGeneration(context: BuildContext, tempDtsDir: strin
  * @internal
  */
 async function copyUnbundledDeclarations(context: BuildContext, tempDtsDir: string): Promise<{ dtsFiles: string[] }> {
-	const logger = createEnvLogger(context.target);
+	const logger = BuildLogger.createEnvLogger(context.target);
 	const { glob } = await import("glob");
 
 	// Find all .d.ts files in the temp directory
@@ -541,13 +794,13 @@ export async function runApiExtractor(
 	context: BuildContext,
 	tempDtsDir: string,
 	apiModel?: ApiModelOptions | boolean,
-): Promise<{ bundledDtsPath?: string; apiModelPath?: string; dtsFiles?: string[] }> {
-	const logger = createEnvLogger(context.target);
-	const timer = createTimer();
+): Promise<{ bundledDtsPath?: string; apiModelPath?: string; tsdocMetadataPath?: string; dtsFiles?: string[] }> {
+	const logger = BuildLogger.createEnvLogger(context.target);
+	const timer = BuildLogger.createTimer();
 
 	// Validate API Extractor is installed
 	try {
-		getApiExtractorPath();
+		FileSystemUtils.getApiExtractorPath();
 	} catch {
 		logger.warn("API Extractor not found, copying unbundled declarations");
 		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
@@ -584,15 +837,14 @@ export async function runApiExtractor(
 	// Output path for bundled .d.ts
 	const bundledDtsPath = join(context.outdir, "index.d.ts");
 
-	// API model configuration
-	const apiModelEnabled = apiModel === true || (typeof apiModel === "object" && apiModel.enabled !== false);
+	// Resolve API model configuration using the centralized resolver
+	const unscopedName = FileSystemUtils.getUnscopedPackageName(context.packageJson.name ?? "package");
+	const apiModelConfig = ApiModelConfigResolver.resolve(apiModel, unscopedName);
 
-	const apiModelFilename =
-		typeof apiModel === "object" && apiModel.filename
-			? apiModel.filename
-			: `${getUnscopedPackageName(context.packageJson.name ?? "package")}.api.json`;
-
-	const apiModelPath = apiModelEnabled ? join(context.outdir, apiModelFilename) : undefined;
+	const apiModelPath = apiModelConfig.enabled ? join(context.outdir, apiModelConfig.filename) : undefined;
+	const tsdocMetadataPath = apiModelConfig.tsdocMetadataEnabled
+		? join(context.outdir, apiModelConfig.tsdocMetadataFilename)
+		: undefined;
 
 	// Ensure output directory exists
 	await mkdir(dirname(bundledDtsPath), { recursive: true });
@@ -613,10 +865,16 @@ export async function runApiExtractor(
 					enabled: true,
 					untrimmedFilePath: bundledDtsPath,
 				},
-				docModel: apiModelEnabled
+				docModel: apiModelConfig.enabled
 					? {
 							enabled: true,
 							apiJsonFilePath: apiModelPath,
+						}
+					: { enabled: false },
+				tsdocMetadata: apiModelConfig.tsdocMetadataEnabled
+					? {
+							enabled: true,
+							tsdocMetadataFilePath: tsdocMetadataPath,
 						}
 					: { enabled: false },
 				apiReport: {
@@ -662,13 +920,17 @@ export async function runApiExtractor(
 			return { dtsFiles };
 		}
 
-		logger.info(`Emitted 1 bundled declaration file in ${formatTime(timer.elapsed())}`);
+		logger.info(`Emitted 1 bundled declaration file in ${BuildLogger.formatTime(timer.elapsed())}`);
 
 		if (apiModelPath) {
 			logger.success(`Emitted API model: ${basename(apiModelPath)} (excluded from npm publish)`);
 		}
 
-		return { bundledDtsPath, apiModelPath };
+		if (tsdocMetadataPath && existsSync(tsdocMetadataPath)) {
+			logger.success(`Emitted TSDoc metadata: ${basename(tsdocMetadataPath)}`);
+		}
+
+		return { bundledDtsPath, apiModelPath, tsdocMetadataPath };
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		logger.warn(`API Extractor error: ${errorMessage}, copying unbundled declarations`);
@@ -704,13 +966,12 @@ export async function writePackageJson(context: BuildContext, filesArray: Set<st
 		? (pkg: PackageJson): PackageJson => userTransform({ target: context.target, pkg })
 		: undefined;
 
-	const transformed = await buildPackageJson(
-		context.packageJson,
+	const transformed = await PackageJsonTransformer.build(context.packageJson, {
 		isProduction,
-		true, // processTSExports
-		true, // bundle mode
-		transformFn,
-	);
+		processTSExports: true,
+		bundle: true,
+		transform: transformFn,
+	});
 
 	// Set private flag for dev target
 	if (context.target === "dev") {
@@ -740,7 +1001,7 @@ export async function writePackageJson(context: BuildContext, filesArray: Set<st
  * @public
  */
 export async function copyFiles(context: BuildContext, patterns: (string | CopyPatternConfig)[]): Promise<string[]> {
-	const logger = createEnvLogger(context.target);
+	const logger = BuildLogger.createEnvLogger(context.target);
 	const copiedFiles: string[] = [];
 
 	for (const pattern of patterns) {
@@ -786,6 +1047,160 @@ export async function copyFiles(context: BuildContext, patterns: (string | CopyP
 }
 
 /**
+ * File descriptor for copying operations.
+ *
+ * @internal
+ */
+interface CopyFileDescriptor {
+	/** Absolute source path */
+	src: string;
+	/** Absolute destination path */
+	dest: string;
+	/** Display name for logging */
+	name: string;
+}
+
+/**
+ * Manages copying of build artifacts to local paths.
+ *
+ * @remarks
+ * This class encapsulates the logic for copying API documentation artifacts
+ * (API model, TSDoc metadata, and package.json) to specified local directories.
+ * It is used to support documentation generation workflows where artifacts need
+ * to be available outside the standard build output directory.
+ *
+ * The copier only operates during `npm` target builds and is skipped in CI
+ * environments to avoid side effects during automated builds.
+ *
+ * @example
+ * Copy artifacts to a documentation directory:
+ * ```typescript
+ * import { LocalPathCopier } from '@savvy-web/bun-builder';
+ * import type { BuildContext } from '@savvy-web/bun-builder';
+ *
+ * const copier = new LocalPathCopier(context, {
+ *   apiModelFilename: 'my-package.api.json',
+ *   tsdocMetadataFilename: 'tsdoc-metadata.json',
+ * });
+ *
+ * await copier.copyToLocalPaths(['../docs/api', './site/api']);
+ * ```
+ *
+ * @public
+ */
+export class LocalPathCopier {
+	private readonly context: BuildContext;
+	private readonly apiModelFilename: string;
+	private readonly tsdocMetadataFilename: string;
+
+	/**
+	 * Creates a new LocalPathCopier instance.
+	 *
+	 * @param context - The build context containing cwd and outdir
+	 * @param config - Configuration specifying artifact filenames
+	 */
+	constructor(
+		context: BuildContext,
+		config: {
+			apiModelFilename: string;
+			tsdocMetadataFilename: string;
+		},
+	) {
+		this.context = context;
+		this.apiModelFilename = config.apiModelFilename;
+		this.tsdocMetadataFilename = config.tsdocMetadataFilename;
+	}
+
+	/**
+	 * Copies build artifacts to multiple local paths.
+	 *
+	 * @remarks
+	 * For each specified path, copies the following files if they exist:
+	 * - API model JSON file (e.g., `my-package.api.json`)
+	 * - TSDoc metadata file (e.g., `tsdoc-metadata.json`)
+	 * - Transformed `package.json`
+	 *
+	 * Destination directories are created if they do not exist.
+	 *
+	 * @param localPaths - Array of relative paths to copy artifacts to
+	 *
+	 * @example
+	 * ```typescript
+	 * import { LocalPathCopier } from '@savvy-web/bun-builder';
+	 * import type { BuildContext } from '@savvy-web/bun-builder';
+	 *
+	 * const copier = new LocalPathCopier(context, {
+	 *   apiModelFilename: 'my-package.api.json',
+	 *   tsdocMetadataFilename: 'tsdoc-metadata.json',
+	 * });
+	 *
+	 * // Copy to documentation site directory
+	 * await copier.copyToLocalPaths(['../docs/api']);
+	 * ```
+	 */
+	async copyToLocalPaths(localPaths: string[]): Promise<void> {
+		const logger = BuildLogger.createEnvLogger(this.context.target);
+
+		for (const localPath of localPaths) {
+			const resolvedPath = join(this.context.cwd, localPath);
+			const filesToCopy = this.collectFilesToCopy(resolvedPath);
+
+			if (filesToCopy.length === 0) {
+				continue;
+			}
+
+			await mkdir(resolvedPath, { recursive: true });
+
+			for (const file of filesToCopy) {
+				await copyFile(file.src, file.dest);
+			}
+
+			const fileNames = filesToCopy.map((f) => f.name).join(", ");
+			logger.info(`Copied ${fileNames} to: ${localPath}`);
+		}
+	}
+
+	/**
+	 * Collects file descriptors for all artifacts that exist in the output directory.
+	 *
+	 * @param destinationDir - The resolved destination directory path
+	 * @returns Array of file descriptors for existing artifacts
+	 */
+	private collectFilesToCopy(destinationDir: string): CopyFileDescriptor[] {
+		const files: CopyFileDescriptor[] = [];
+
+		const apiModelSrc = join(this.context.outdir, this.apiModelFilename);
+		if (existsSync(apiModelSrc)) {
+			files.push({
+				src: apiModelSrc,
+				dest: join(destinationDir, this.apiModelFilename),
+				name: this.apiModelFilename,
+			});
+		}
+
+		const tsdocSrc = join(this.context.outdir, this.tsdocMetadataFilename);
+		if (existsSync(tsdocSrc)) {
+			files.push({
+				src: tsdocSrc,
+				dest: join(destinationDir, this.tsdocMetadataFilename),
+				name: this.tsdocMetadataFilename,
+			});
+		}
+
+		const packageJsonSrc = join(this.context.outdir, "package.json");
+		if (existsSync(packageJsonSrc)) {
+			files.push({
+				src: packageJsonSrc,
+				dest: join(destinationDir, "package.json"),
+				name: "package.json",
+			});
+		}
+
+		return files;
+	}
+}
+
+/**
  * Executes the complete build lifecycle for a single target.
  *
  * @remarks
@@ -798,6 +1213,7 @@ export async function copyFiles(context: BuildContext, patterns: (string | CopyP
  * 5. **Copy Files**: Copy additional assets to output
  * 6. **Transform Files**: Run user-defined post-processing (if provided)
  * 7. **Write package.json**: Transform and write final package.json
+ * 8. **Copy to local paths**: Copy artifacts to local paths (npm target, non-CI only)
  *
  * @param options - Builder configuration options
  * @param target - The build target to execute
@@ -808,8 +1224,8 @@ export async function copyFiles(context: BuildContext, patterns: (string | CopyP
 export async function executeBuild(options: BunLibraryBuilderOptions, target: BuildTarget): Promise<BuildResult> {
 	const cwd = process.cwd();
 	const outdir = join(cwd, "dist", target);
-	const logger = createEnvLogger(target);
-	const timer = createTimer();
+	const logger = BuildLogger.createEnvLogger(target);
+	const timer = BuildLogger.createTimer();
 
 	// Read package.json
 	const packageJsonPath = join(cwd, "package.json");
@@ -817,7 +1233,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 	const packageJson = JSON.parse(packageJsonContent) as PackageJson;
 
 	// Get version
-	const version = await packageJsonVersion();
+	const version = await FileSystemUtils.packageJsonVersion();
 
 	// Extract entry points
 	const extractor = new EntryExtractor({
@@ -853,6 +1269,17 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 		version,
 		packageJson,
 	};
+
+	// Validate apiModel.localPaths early to fail fast before expensive build operations.
+	// Only validates for npm target and non-CI environments where local copying occurs.
+	if (target === "npm" && !BuildLogger.isCI()) {
+		const unscopedName = FileSystemUtils.getUnscopedPackageName(packageJson.name ?? "package");
+		const apiModelConfig = ApiModelConfigResolver.resolve(options.apiModel, unscopedName);
+
+		if (apiModelConfig.localPaths.length > 0) {
+			LocalPathValidator.validatePaths(cwd, apiModelConfig.localPaths);
+		}
+	}
 
 	// Clean output directory
 	await rm(outdir, { recursive: true, force: true });
@@ -964,16 +1391,32 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 	await writePackageJson(context, filesArray);
 	filesArray.add("package.json");
 
+	// Phase 8: Copy API artifacts to local paths (npm target only, skip in CI)
+	// This enables documentation workflows where API models need to be available
+	// in directories outside the standard build output.
+	if (target === "npm" && !BuildLogger.isCI()) {
+		const unscopedName = FileSystemUtils.getUnscopedPackageName(packageJson.name ?? "package");
+		const apiModelConfig = ApiModelConfigResolver.resolve(options.apiModel, unscopedName);
+
+		if (apiModelConfig.localPaths.length > 0) {
+			const copier = new LocalPathCopier(context, {
+				apiModelFilename: apiModelConfig.filename,
+				tsdocMetadataFilename: apiModelConfig.tsdocMetadataFilename,
+			});
+			await copier.copyToLocalPaths(apiModelConfig.localPaths);
+		}
+	}
+
 	// Log files array
 	const sortedFiles = Array.from(filesArray).sort();
 	logger.fileOp("added to files array", sortedFiles);
 
 	// Print ready message
-	logger.ready(`built in ${formatTime(timer.elapsed())}`);
+	logger.ready(`built in ${BuildLogger.formatTime(timer.elapsed())}`);
 
 	// Print file table
-	const fileInfo = await collectFileInfo(outdir, sortedFiles);
-	printFileTable(fileInfo, outdir, `(${target})`);
+	const fileInfo = await BuildLogger.collectFileInfo(outdir, sortedFiles);
+	BuildLogger.printFileTable(fileInfo, outdir, `(${target})`);
 
 	return {
 		success: true,

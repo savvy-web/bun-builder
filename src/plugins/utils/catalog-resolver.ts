@@ -49,7 +49,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { PackageJson } from "../../types/package-json.js";
-import { createLogger } from "./logger.js";
+import { BuildLogger } from "./logger.js";
 
 /**
  * Workspace configuration structure for Bun workspaces.
@@ -240,7 +240,7 @@ export class BunCatalogResolver {
 
 			return this.catalogCache;
 		} catch (error) {
-			const logger = createLogger("catalog");
+			const logger = BuildLogger.createLogger("catalog");
 			const errorMessage = error instanceof Error ? error.message : String(error);
 			logger.error(`Failed to read workspace package.json: ${errorMessage}`);
 			return { default: {}, named: {} };
@@ -280,7 +280,7 @@ export class BunCatalogResolver {
 	 * @returns The resolved package.json
 	 */
 	async resolvePackageJson(packageJson: PackageJson, dir: string = process.cwd()): Promise<PackageJson> {
-		const logger = createLogger("catalog");
+		const logger = BuildLogger.createLogger("catalog");
 		const result = { ...packageJson };
 
 		const dependencyFields = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"] as const;
@@ -400,7 +400,10 @@ export class BunCatalogResolver {
 	 *
 	 * @internal
 	 */
-	private validateNoUnresolvedReferences(packageJson: PackageJson, logger: ReturnType<typeof createLogger>): void {
+	private validateNoUnresolvedReferences(
+		packageJson: PackageJson,
+		logger: ReturnType<typeof BuildLogger.createLogger>,
+	): void {
 		const dependencyFields = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"] as const;
 
 		const unresolved: Array<{ field: string; name: string; version: string }> = [];

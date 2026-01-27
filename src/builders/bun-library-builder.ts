@@ -13,7 +13,7 @@ import { parseArgs } from "node:util";
 import { executeBuild } from "../hooks/build-lifecycle.js";
 // biome-ignore lint/correctness/useImportExtensions: Bun macros require .ts extension
 import { getVersion } from "../macros/version.ts" with { type: "macro" };
-import { createLogger, createTimer, formatTime, printBanner } from "../plugins/utils/logger.js";
+import { BuildLogger } from "../plugins/utils/logger.js";
 import type { BuildResult, BuildTarget, BunLibraryBuilderOptions } from "../types/builder-types.js";
 
 /**
@@ -210,11 +210,11 @@ export class BunLibraryBuilder {
 	 * ```
 	 */
 	async run(targets?: BuildTarget[]): Promise<BuildResult[]> {
-		const logger = createLogger("bun-builder");
-		const timer = createTimer();
+		const logger = BuildLogger.createLogger("bun-builder");
+		const timer = BuildLogger.createTimer();
 
 		// Print banner with version (embedded at compile time)
-		printBanner(PACKAGE_VERSION);
+		BuildLogger.printBanner(PACKAGE_VERSION);
 
 		// Determine targets from args or options
 		const resolvedTargets = targets ?? this.resolveTargets();
@@ -253,7 +253,7 @@ export class BunLibraryBuilder {
 		if (failed > 0) {
 			logger.error(`Build completed with ${failed} failure(s)`);
 		} else {
-			logger.ready(`Built ${successful} target(s) in ${formatTime(timer.elapsed())}`);
+			logger.ready(`Built ${successful} target(s) in ${BuildLogger.formatTime(timer.elapsed())}`);
 		}
 
 		return results;

@@ -102,6 +102,55 @@ export default BunLibraryBuilder.create({
 | `copyPatterns`      | `(string \| CopyPatternConfig)[]`| auto                 | Additional files to copy             |
 | `transform`         | `TransformPackageJsonFn`         | -                    | Modify output package.json           |
 | `transformFiles`    | `TransformFilesCallback`         | -                    | Post-build file processing           |
+| `bunTarget`         | `'bun' \| 'node' \| 'browser'`   | `'bun'`              | Target runtime for Bun.build()       |
+
+### API Model Options
+
+When `apiModel` is set to an object, the following options are available:
+
+| Option              | Type                             | Default                    | Description                          |
+|---------------------|----------------------------------|----------------------------|--------------------------------------|
+| `enabled`           | `boolean`                        | `false`                    | Enable API model generation          |
+| `filename`          | `string`                         | `'<package>.api.json'`     | API model filename                   |
+| `localPaths`        | `string[]`                       | `[]`                       | Copy artifacts to these paths        |
+| `tsdocMetadata`     | `boolean \| TsDocMetadataOptions`| `true` when enabled        | Generate tsdoc-metadata.json         |
+
+#### localPaths Feature
+
+The `localPaths` option copies API documentation artifacts to specified directories after build:
+
+```typescript
+import { BunLibraryBuilder } from '@savvy-web/bun-builder';
+
+export default BunLibraryBuilder.create({
+  apiModel: {
+    enabled: true,
+    localPaths: ['../website/docs/api/my-package'],
+  },
+});
+```
+
+This copies:
+
+- API model JSON file (e.g., `my-package.api.json`)
+- TSDoc metadata file (`tsdoc-metadata.json`)
+- Transformed `package.json`
+
+Note: Local path copying only runs for `npm` builds and is skipped in CI environments.
+
+#### Environment Variable
+
+You can also define local paths via the `BUN_BUILDER_LOCAL_PATHS` environment variable.
+This is useful for developer-specific paths that shouldn't be committed to version control.
+
+Create a `.env.local` file (automatically loaded by Bun and typically gitignored):
+
+```env
+BUN_BUILDER_LOCAL_PATHS=../website/docs/api/my-package,../other-project/lib
+```
+
+Paths are comma-separated. When both the environment variable and `apiModel.localPaths`
+are set, the paths are merged with user-defined paths taking precedence.
 
 ## Build Targets
 
