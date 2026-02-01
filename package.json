@@ -1,6 +1,6 @@
 {
 	"name": "@savvy-web/bun-builder",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Bun-based build system for Node.js libraries with automatic package.json transformation, TypeScript declaration bundling, and multi-target support",
 	"keywords": [
 		"bun",
