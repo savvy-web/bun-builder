@@ -3,11 +3,17 @@ status: current
 module: bun-builder
 category: architecture
 created: 2026-01-26
-updated: 2026-01-26
-last-synced: 2026-01-26
+updated: 2026-02-01
+last-synced: 2026-02-01
 completeness: 100
 related: []
 dependencies: []
+sync-notes: |
+  Synced with feat/feature-parity branch changes:
+  - Class-based API patterns (static methods, constants as properties)
+  - ImportGraph for TSDoc file discovery
+  - Removed tmp/glob dependencies (use Bun-native methods)
+  - Reduced public API surface
 ---
 
 # Bun Builder - Architecture
@@ -47,6 +53,8 @@ transformation, and multi-target builds.
 - **Declaration bundling**: tsgo + API Extractor for rolled-up .d.ts files
 - **Catalog resolution**: Support for Bun's `catalog:` and `workspace:` protocols
 - **Self-building**: The package builds itself using BunLibraryBuilder
+- **Minimal API surface**: Public exports limited to `BunLibraryBuilder` and types;
+  utility classes are internal implementation details
 
 **When to reference this document:**
 
@@ -143,11 +151,15 @@ fields.
 - Parse `bin` field (string or object)
 - Map JavaScript output paths back to TypeScript sources
 - Support `exportsAsIndexes` option for directory structure
+- Static `fromPackageJson()` method for convenient one-liner extraction
 
 ```typescript
 class EntryExtractor {
   constructor(options?: EntryExtractorOptions)
   extract(packageJson: PackageJson): ExtractedEntries
+
+  // Static convenience method
+  static fromPackageJson(packageJson: PackageJson, options?: EntryExtractorOptions): ExtractedEntries
 }
 
 interface ExtractedEntries {
@@ -169,9 +181,15 @@ interface ExtractedEntries {
 - Resolve `catalog:<name>` references to named catalogs
 - Resolve `workspace:*` references to package versions
 - Validate no unresolved references remain
+- Static `getDefault()` method for shared singleton instance
+- Constants as static class properties (`CATALOG_PREFIX`, `WORKSPACE_PREFIX`)
 
 ```typescript
 class BunCatalogResolver {
+  // Static singleton access
+  static getDefault(): BunCatalogResolver
+
+  // Instance methods
   clearCache(): void
   findWorkspaceRoot(startDir?: string): string | null
   async getCatalogs(workspaceRoot?: string): Promise<CatalogData>
@@ -398,8 +416,8 @@ const config = ApiModelConfigResolver.resolve(options.apiModel, 'my-package');
 
 **Location:** `src/hooks/build-lifecycle.ts`
 
-**Purpose:** Copies build artifacts (API model, tsdoc-metadata.json, package.json)
-to specified local directories after build completion.
+**Purpose:** Copies build artifacts (API model, tsdoc-metadata.json, tsconfig.json,
+tsdoc.json, package.json) to specified local directories after build completion.
 
 ```typescript
 import { LocalPathCopier } from '@savvy-web/bun-builder';
@@ -407,9 +425,157 @@ import { LocalPathCopier } from '@savvy-web/bun-builder';
 const copier = new LocalPathCopier(context, {
   apiModelFilename: 'my-package.api.json',
   tsdocMetadataFilename: 'tsdoc-metadata.json',
+  tsconfigFilename: 'tsconfig.json',
+  tsdocConfigFilename: 'tsdoc.json',
 });
 
 await copier.copyToLocalPaths(['../docs/api', './site/api']);
+```
+
+#### Component 13: TsconfigResolver
+
+**Location:** `src/plugins/utils/tsconfig-resolver.ts`
+
+**Purpose:** Converts TypeScript's internal `ParsedCommandLine` representation
+to a JSON-serializable tsconfig format for virtual TypeScript environments.
+
+**Key Features:**
+
+- Converts enum values (target, module, jsx, etc.) to their string equivalents
+- Sets `composite: false` and `noEmit: true` for virtual environment compatibility
+- Excludes path-dependent options (rootDir, outDir, baseUrl, paths, typeRoots)
+- Excludes file selection (include, exclude, files, references)
+- Converts lib references from full paths to short names (e.g., "esnext")
+- Adds `$schema` for IDE support
+
+**Static Conversion Methods:**
+
+| Method                           | Purpose                                    |
+|----------------------------------|--------------------------------------------|
+| `convertScriptTarget()`          | Convert ScriptTarget enum to string        |
+| `convertModuleKind()`            | Convert ModuleKind enum to string          |
+| `convertModuleResolution()`      | Convert ModuleResolutionKind enum to string|
+| `convertJsxEmit()`               | Convert JsxEmit enum to string             |
+| `convertModuleDetection()`       | Convert ModuleDetectionKind enum to string |
+| `convertNewLine()`               | Convert NewLineKind enum to string         |
+| `convertLibReference()`          | Convert lib.*.d.ts to short name           |
+
+**Instance Method:**
+
+| Method                     | Purpose                                         |
+|----------------------------|-------------------------------------------------|
+| `resolve(parsed, rootDir)` | Transform ParsedCommandLine to ResolvedTsconfig |
+
+```typescript
+import { parseJsonConfigFileContent, readConfigFile, sys } from 'typescript';
+import { TsconfigResolver } from '@savvy-web/bun-builder';
+
+const configFile = readConfigFile('tsconfig.json', sys.readFile.bind(sys));
+const parsed = parseJsonConfigFileContent(configFile.config, sys, process.cwd());
+
+const resolver = new TsconfigResolver();
+const resolved = resolver.resolve(parsed, process.cwd());
+console.log(JSON.stringify(resolved, null, 2));
+```
+
+#### Component 14: TsDocConfigBuilder
+
+**Location:** `src/plugins/utils/tsdoc-config-builder.ts`
+
+**Purpose:** Dynamically generates `tsdoc.json` configuration files for API
+Extractor and documentation tools based on tag group selections.
+
+**Key Features:**
+
+- Expands tag groups into individual tag definitions from `@microsoft/tsdoc`
+- Supports three standardization groups: core, extended, discretionary
+- Generates properly formatted tsdoc.json with `$schema` and `supportForTags`
+- Optimizes output based on group selection (minimal config for all groups)
+- Handles config persistence based on environment (CI vs local)
+- Supports custom tag definitions beyond standard groups
+
+**Static Methods:**
+
+| Method                           | Purpose                                      |
+|----------------------------------|----------------------------------------------|
+| `build(options)`                 | Build tag config from options                |
+| `writeConfigFile(options, dir)`  | Write tsdoc.json to output directory         |
+| `getTagsForGroup(group)`         | Get standard tags for a group                |
+| `isCI()`                         | Detect CI environment                        |
+| `shouldPersist(config)`          | Determine if config should persist to disk   |
+| `getConfigPath(config, cwd)`     | Resolve output path for tsdoc.json           |
+
+**Static Properties:**
+
+| Property           | Purpose                                    |
+|--------------------|--------------------------------------------|
+| `ALL_GROUPS`       | Array of all group names                   |
+| `TAG_GROUPS`       | Lazily computed tag definitions per group  |
+
+```typescript
+import { TsDocConfigBuilder } from '@savvy-web/bun-builder';
+
+// Build config for all standard tags
+const config = TsDocConfigBuilder.build();
+// { tagDefinitions: [], supportForTags: {...}, useStandardTags: true }
+
+// Build config with subset of groups
+const coreOnly = TsDocConfigBuilder.build({ groups: ['core'] });
+// { tagDefinitions: [...], supportForTags: {...}, useStandardTags: false }
+
+// Build config with custom tags
+const custom = TsDocConfigBuilder.build({
+  groups: ['core', 'extended', 'discretionary'],
+  tagDefinitions: [{ tagName: '@slot', syntaxKind: 'block' }],
+});
+
+// Write to output directory
+await TsDocConfigBuilder.writeConfigFile({}, './dist/npm');
+```
+
+#### Component 15: ImportGraph
+
+**Location:** `src/plugins/utils/import-graph.ts`
+
+**Purpose:** Analyzes TypeScript import relationships to discover all files
+reachable from specified entry points. Used by TSDoc linting for file discovery.
+
+**Key Features:**
+
+- Uses TypeScript compiler API for accurate module resolution
+- Supports path aliases from tsconfig.json
+- Handles static imports, dynamic imports, and re-exports
+- Tracks circular imports via visited set
+- Filters out test files, declaration files, and node_modules
+
+**Static Methods:**
+
+| Method                     | Purpose                                         |
+|----------------------------|-------------------------------------------------|
+| `fromEntries(paths, opts)` | Trace imports from entry file paths             |
+| `fromPackageExports(path)` | Trace imports from package.json exports         |
+
+**Instance Methods:**
+
+| Method                          | Purpose                                    |
+|---------------------------------|--------------------------------------------|
+| `traceFromEntries(entryPaths)`  | Trace imports from entry file paths        |
+| `traceFromPackageExports(path)` | Trace imports from package.json exports    |
+
+```typescript
+// Internal usage example (not part of public API)
+import { ImportGraph } from '../plugins/utils/import-graph.js';
+
+// Discover all files from package.json exports
+const graph = new ImportGraph({ rootDir: process.cwd() });
+const result = graph.traceFromPackageExports('package.json');
+
+console.log(result.files);    // All reachable TypeScript files
+console.log(result.entries);  // Entry points that were traced
+console.log(result.errors);   // Any errors encountered
+
+// Or use static methods
+const result2 = ImportGraph.fromEntries(['./src/index.ts'], { rootDir: process.cwd() });
 ```
 
 ### Architecture Diagram
@@ -440,7 +606,7 @@ await copier.copyToLocalPaths(['../docs/api', './site/api']);
 |    3. TSDoc Lint (optional pre-build validation)            |
 |    4. Bun.build() (bundle source files)                     |
 |    5. tsgo (generate declarations)                          |
-|    6. API Extractor (bundle declarations + tsdoc-metadata)  |
+|    6. API Extractor (bundle declarations + tsconfig.json)   |
 |    7. Copy files (README, LICENSE, assets)                  |
 |    8. Transform files (user callback)                       |
 |    9. Write package.json (with files array)                 |
@@ -451,13 +617,18 @@ await copier.copyToLocalPaths(['../docs/api', './site/api']);
 +-------------------------------------------------------------+
 |              Utility Classes Layer                          |
 |    - EntryExtractor: Parse package.json exports/bin         |
+|      (static fromPackageJson() for one-liner extraction)    |
 |    - BunCatalogResolver: Resolve catalog:/workspace:        |
+|      (static getDefault() for shared singleton)             |
 |    - PackageJsonTransformer: Path transformations (static)  |
 |    - FileSystemUtils: File ops, paths, versions (static)    |
 |    - LocalPathValidator: Validate destination paths (static)|
 |    - BuildLogger: RSlib-style colored output (static)       |
 |    - ApiModelConfigResolver: Resolve API model config       |
 |    - LocalPathCopier: Copy artifacts to local paths         |
+|    - TsconfigResolver: Resolve tsconfig for virtual envs    |
+|    - TsDocConfigBuilder: Generate tsdoc.json dynamically    |
+|    - ImportGraph: Trace TypeScript imports for TSDoc lint   |
 |    - TSConfigs: Manage tsconfig for declaration gen         |
 +-------------------------------------------------------------+
                               |
@@ -730,7 +901,7 @@ version management.
 ```text
 bun-builder/
 ├── src/
-│   ├── index.ts                 # Main exports (re-exports all public API)
+│   ├── index.ts                 # Main exports (BunLibraryBuilder + types only)
 │   ├── builders/
 │   │   └── bun-library-builder.ts  # Main builder class
 │   ├── hooks/
@@ -741,8 +912,14 @@ bun-builder/
 │   ├── plugins/
 │   │   └── utils/
 │   │       ├── entry-extractor.ts        # EntryExtractor class
+│   │       │                             # (static fromPackageJson())
 │   │       ├── catalog-resolver.ts       # BunCatalogResolver class
+│   │       │                             # (static getDefault())
 │   │       ├── package-json-transformer.ts # PackageJsonTransformer (static)
+│   │       ├── tsconfig-resolver.ts      # TsconfigResolver class
+│   │       ├── tsdoc-config-builder.ts   # TsDocConfigBuilder (static)
+│   │       ├── import-graph.ts           # ImportGraph class for TSDoc lint
+│   │       │                             # (static fromEntries/fromPackageExports)
 │   │       ├── file-utils.ts             # FileSystemUtils (static)
 │   │       │                             # LocalPathValidator (static)
 │   │       └── logger.ts                 # BuildLogger (static)
@@ -799,9 +976,12 @@ executeBuild(options, target)
 +----------------------------------------+
 | 4. TSDOC LINT (optional)               |
 |    - Skip if tsdocLint disabled        |
+|    - Generate tsdoc.json config        |
 |    - Dynamic import ESLint + plugins   |
-|    - Lint entry point files            |
+|    - Use ImportGraph for file discovery|
+|    - Lint discovered files             |
 |    - Handle errors based on onError    |
+|    - Optionally persist tsdoc.json     |
 +----------------------------------------+
          |
          v
@@ -910,12 +1090,14 @@ executeBuild(options, target)
 **Operations:**
 
 1. Check if enabled (skip if `enabled: false`)
-2. Dynamic import ESLint and plugins
-3. Discover files from entry points
-4. Configure ESLint with tsdoc rules
-5. Run linting on files
-6. Count errors and warnings
-7. Handle based on `onError` setting
+2. Generate tsdoc.json via `TsDocConfigBuilder.writeConfigFile()`
+3. Dynamic import ESLint and plugins
+4. Discover files using `ImportGraph.traceFromPackageExports()` or explicit `include` patterns
+5. Configure ESLint with tsdoc rules
+6. Run linting on discovered files
+7. Count errors and warnings
+8. Handle based on `onError` setting
+9. Optionally persist tsdoc.json to project root for IDE support
 
 **Error Handling:**
 
@@ -995,17 +1177,19 @@ Default: `"throw"` in CI, `"error"` locally
    - `tsdocMetadata.enabled` based on resolved config
    - `bundledPackages` from options
 5. Run API Extractor
-6. Handle failures by copying unbundled declarations
+6. Generate resolved tsconfig.json using `TsconfigResolver` (if apiModel enabled)
+7. Handle failures by copying unbundled declarations
 
 **Outputs:**
 
-- `{ bundledDtsPath?, apiModelPath?, tsdocMetadataPath?, dtsFiles? }`
+- `{ bundledDtsPath?, apiModelPath?, tsdocMetadataPath?, tsconfigPath?, dtsFiles? }`
 
 **Generated Files (when enabled):**
 
 - `index.d.ts` - Bundled TypeScript declarations
 - `<package>.api.json` - API model for documentation tools
 - `tsdoc-metadata.json` - TSDoc custom tag definitions
+- `tsconfig.json` - Resolved tsconfig for virtual TypeScript environments
 
 #### Phase 6: Copy Files
 
@@ -1089,6 +1273,8 @@ Default: `"throw"` in CI, `"error"` locally
    - Create destination directory if needed
    - Copy API model file (if exists)
    - Copy tsdoc-metadata.json (if exists)
+   - Copy tsconfig.json (if exists)
+   - Copy tsdoc.json (if exists)
    - Copy package.json
 3. Log copied files for each destination
 
@@ -1233,21 +1419,44 @@ Source .ts files
 +----------------------------------------+
          |
          v
++----------------------------------------+
+| TsconfigResolver (if apiModel enabled) |
+|   - Parse project tsconfig.json        |
+|   - Convert enums to strings           |
+|   - Set composite: false, noEmit: true |
+|   - Write resolved tsconfig.json       |
++----------------------------------------+
+         |
+         v
++----------------------------------------+
+| TsDocConfigBuilder (if apiModel)       |
+|   - Build tag config from options      |
+|   - Generate supportForTags mapping    |
+|   - Write tsdoc.json to dist           |
++----------------------------------------+
+         |
+         v
     dist/{target}/index.d.ts
     dist/{target}/<pkg>.api.json (if apiModel)
     dist/{target}/tsdoc-metadata.json (if apiModel)
+    dist/{target}/tsconfig.json (if apiModel)
+    dist/{target}/tsdoc.json (if apiModel)
          |
          v (npm target, non-CI, localPaths configured)
 +----------------------------------------+
 | LocalPathCopier                        |
 |   - Copy API model to local paths      |
 |   - Copy tsdoc-metadata.json           |
+|   - Copy tsconfig.json                 |
+|   - Copy tsdoc.json                    |
 |   - Copy package.json                  |
 +----------------------------------------+
          |
          v
     {localPath}/<pkg>.api.json
     {localPath}/tsdoc-metadata.json
+    {localPath}/tsconfig.json
+    {localPath}/tsdoc.json
     {localPath}/package.json
 ```
 
@@ -1464,8 +1673,10 @@ Extractor.invoke(extractorConfig, { localBuild: true });
 **Utilities:**
 
 - **picocolors**: Terminal coloring
-- **glob**: File pattern matching
-- **tmp**: Temporary file creation
+
+Note: File pattern matching uses `Bun.Glob().scan()` (requires `dot: true` option for
+dotfiles). Temporary files use `os.tmpdir()` + `crypto.randomUUID()` instead of external
+packages.
 
 ---
 
@@ -1566,14 +1777,26 @@ bun test --watch
 
 ---
 
-**Document Status:** Current - Fully documented including class-based API refactoring
-and localPaths feature
+**Document Status:** Current - Fully documented including class-based API refactoring,
+localPaths feature, ImportGraph for TSDoc file discovery, and TsconfigResolver for
+virtual TypeScript environments
 
-**Recent Changes (feat/local-paths branch):**
+**Recent Changes (feat/feature-parity branch):**
 
 - Refactored utility functions to static methods on classes
+- Moved constants into classes as static properties (e.g., `BunCatalogResolver.CATALOG_PREFIX`)
+- Added static convenience methods (`EntryExtractor.fromPackageJson()`, `BunCatalogResolver.getDefault()`)
 - Added `ApiModelConfigResolver` for centralizing API model option parsing
 - Added `LocalPathCopier` for copying artifacts to local directories
 - Added `LocalPathValidator` for path validation
 - Added `apiModel.localPaths` feature for documentation site integration
 - Added `tsdoc-metadata.json` generation when API model is enabled
+- Added `TsconfigResolver` for resolving tsconfig.json to virtual environments
+- Added `tsconfig.json` output when API model is enabled
+- Added `TsDocConfigBuilder` for dynamic tsdoc.json generation
+- Added `tsdoc.json` output when API model is enabled (persists to project root for IDE support)
+- Added `ImportGraph` class for tracing TypeScript imports from entry points (TSDoc linting file discovery)
+- Removed `tmp` and `glob` npm packages - replaced with Bun-native methods:
+  - `os.tmpdir()` + `crypto.randomUUID()` for temp files instead of `tmp.fileSync()`
+  - `Bun.Glob().scan()` instead of `glob` package (note: requires `dot: true` for dotfiles)
+- Reduced public API surface in index.ts exports

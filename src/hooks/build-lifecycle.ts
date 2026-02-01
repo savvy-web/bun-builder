@@ -27,8 +27,11 @@ import { basename, dirname, join, relative } from "node:path";
 import type { BuildArtifact } from "bun";
 import { EntryExtractor } from "../plugins/utils/entry-extractor.js";
 import { FileSystemUtils, LocalPathValidator } from "../plugins/utils/file-utils.js";
+import type { ImportGraphError } from "../plugins/utils/import-graph.js";
+import { ImportGraph } from "../plugins/utils/import-graph.js";
 import { BuildLogger } from "../plugins/utils/logger.js";
 import { PackageJsonTransformer } from "../plugins/utils/package-json-transformer.js";
+import { TsDocConfigBuilder } from "../plugins/utils/tsdoc-config-builder.js";
 import type {
 	ApiModelOptions,
 	BuildResult,
@@ -36,6 +39,7 @@ import type {
 	BunLibraryBuilderOptions,
 	CopyPatternConfig,
 	TsDocLintOptions,
+	TsDocOptions,
 } from "../types/builder-types.js";
 import type { PackageJson } from "../types/package-json.js";
 
@@ -46,7 +50,7 @@ import type { PackageJson } from "../types/package-json.js";
  * This interface contains the fully resolved configuration for API model
  * generation, with all defaults applied and filenames computed.
  *
- * @public
+ * @internal
  */
 export interface ResolvedApiModelConfig {
 	/** Whether API model generation is enabled */
@@ -59,6 +63,8 @@ export interface ResolvedApiModelConfig {
 	tsdocMetadataFilename: string;
 	/** Local paths to copy artifacts to (if any) */
 	localPaths: string[];
+	/** TSDoc configuration options for tag definitions */
+	tsdoc?: TsDocOptions;
 }
 
 /**
@@ -92,23 +98,7 @@ export interface ResolvedApiModelConfig {
  * When both the environment variable and `apiModel.localPaths` are set, the
  * paths are merged with user-defined paths taking precedence (appearing first).
  *
- * @example
- * Resolve API model configuration:
- * ```typescript
- * import { ApiModelConfigResolver } from '@savvy-web/bun-builder';
- * import type { ApiModelOptions } from '@savvy-web/bun-builder';
- *
- * const options: ApiModelOptions = {
- *   enabled: true,
- *   localPaths: ['../docs/api'],
- * };
- *
- * const config = ApiModelConfigResolver.resolve(options, 'my-package');
- * console.log(config.filename); // "my-package.api.json"
- * console.log(config.tsdocMetadataFilename); // "tsdoc-metadata.json"
- * ```
- *
- * @public
+ * @internal
  */
 // biome-ignore lint/complexity/noStaticOnlyClass: Intentional static-only class for API organization
 export class ApiModelConfigResolver {
@@ -173,6 +163,7 @@ export class ApiModelConfigResolver {
 				tsdocMetadataEnabled: false,
 				tsdocMetadataFilename: ApiModelConfigResolver.DEFAULT_TSDOC_METADATA_FILENAME,
 				localPaths,
+				tsdoc: undefined,
 			};
 		}
 
@@ -183,6 +174,7 @@ export class ApiModelConfigResolver {
 				tsdocMetadataEnabled: true,
 				tsdocMetadataFilename: ApiModelConfigResolver.DEFAULT_TSDOC_METADATA_FILENAME,
 				localPaths,
+				tsdoc: undefined,
 			};
 		}
 
@@ -199,6 +191,7 @@ export class ApiModelConfigResolver {
 			tsdocMetadataEnabled,
 			tsdocMetadataFilename,
 			localPaths,
+			tsdoc: apiModel.tsdoc,
 		};
 	}
 
@@ -311,7 +304,7 @@ export class ApiModelConfigResolver {
  * This context is created at the start of each target build and passed through
  * all build phases. It contains all the information needed to execute each phase.
  *
- * @public
+ * @internal
  */
 export interface BuildContext {
 	/**
@@ -361,20 +354,104 @@ export interface BuildContext {
 }
 
 /**
+ * Result of a single lint message from ESLint.
+ * @internal
+ */
+interface LintMessage {
+	/** The file path relative to the project root */
+	filePath: string;
+	/** Line number (1-indexed) */
+	line: number;
+	/** Column number (1-indexed) */
+	column: number;
+	/** The lint message */
+	message: string;
+	/** The ESLint rule ID */
+	ruleId: string | null;
+	/** Severity: 1 = warning, 2 = error */
+	severity: 1 | 2;
+}
+
+/**
+ * Result of running TSDoc lint.
+ * @internal
+ */
+interface LintResult {
+	/** Total number of errors */
+	errorCount: number;
+	/** Total number of warnings */
+	warningCount: number;
+	/** All lint messages */
+	messages: LintMessage[];
+}
+
+/**
+ * Formats lint results for console output.
+ *
+ * @param results - The lint results to format
+ * @param cwd - The current working directory for relative paths
+ * @returns Formatted string for console output
+ *
+ * @internal
+ */
+function formatLintResults(results: LintResult, cwd: string): string {
+	if (results.messages.length === 0) {
+		return "";
+	}
+
+	const lines: string[] = [];
+
+	// Group messages by file
+	const messagesByFile = new Map<string, LintMessage[]>();
+	for (const msg of results.messages) {
+		const existing = messagesByFile.get(msg.filePath) ?? [];
+		existing.push(msg);
+		messagesByFile.set(msg.filePath, existing);
+	}
+
+	for (const [filePath, messages] of messagesByFile) {
+		const relativePath = relative(cwd, filePath);
+		lines.push(`  ${relativePath}`);
+
+		for (const msg of messages) {
+			const location = `${msg.line}:${msg.column}`;
+			const severityLabel = msg.severity === 2 ? "error" : "warning";
+			const rule = msg.ruleId ? `(${msg.ruleId})` : "";
+			lines.push(`    ${location}  ${severityLabel}  ${msg.message} ${rule}`);
+		}
+	}
+
+	// Summary line
+	const errorText = results.errorCount === 1 ? "error" : "errors";
+	const warningText = results.warningCount === 1 ? "warning" : "warnings";
+
+	if (results.errorCount > 0 && results.warningCount > 0) {
+		lines.push(`\n  ${results.errorCount} ${errorText}, ${results.warningCount} ${warningText}`);
+	} else if (results.errorCount > 0) {
+		lines.push(`\n  ${results.errorCount} ${errorText}`);
+	} else {
+		lines.push(`\n  ${results.warningCount} ${warningText}`);
+	}
+
+	return lines.join("\n");
+}
+
+/**
  * Runs TSDoc lint validation before the build.
  *
  * @remarks
  * Uses ESLint with the `eslint-plugin-tsdoc` plugin to validate documentation
- * comments in entry point files. Errors are handled according to the `onError`
- * option, defaulting to `"throw"` in CI and `"error"` locally.
+ * comments. Files are discovered from the `include` option if provided, or
+ * from entry points otherwise.
  *
- * Files to lint are automatically discovered from the entry points.
+ * The function generates a `tsdoc.json` configuration file that can optionally
+ * be persisted to the project root for IDE integration.
  *
  * @param context - The build context
  * @param options - TSDoc lint configuration options
  * @throws When `onError` is `"throw"` and validation errors are found
  *
- * @public
+ * @internal
  */
 export async function runTsDocLint(context: BuildContext, options: TsDocLintOptions): Promise<void> {
 	const logger = BuildLogger.createLogger("tsdoc-lint");
@@ -385,6 +462,20 @@ export async function runTsDocLint(context: BuildContext, options: TsDocLintOpti
 
 	logger.info("Validating TSDoc comments...");
 
+	// Generate tsdoc.json config file
+	const tsdocOptions = options.tsdoc ?? {};
+	const persistConfig = options.persistConfig;
+	const shouldPersist = TsDocConfigBuilder.shouldPersist(persistConfig);
+	const tsdocConfigOutputPath = TsDocConfigBuilder.getConfigPath(persistConfig, context.cwd);
+
+	let tsdocConfigPath: string | undefined;
+	try {
+		tsdocConfigPath = await TsDocConfigBuilder.writeConfigFile(tsdocOptions, dirname(tsdocConfigOutputPath));
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		logger.warn(`Failed to generate tsdoc.json: ${errorMessage}`);
+	}
+
 	// Dynamic import ESLint and plugins
 	const eslintModule = await import("eslint");
 	const tsParserModule = await import("@typescript-eslint/parser");
@@ -394,45 +485,94 @@ export async function runTsDocLint(context: BuildContext, options: TsDocLintOpti
 	const tsParser = (tsParserModule as { default?: unknown }).default ?? tsParserModule;
 	const tsdocPlugin = (tsdocPluginModule as { default?: unknown }).default ?? tsdocPluginModule;
 
-	// Discover files to lint from entry points
-	const files = Object.values(context.entries).map((entry) =>
-		entry.startsWith("./") ? join(context.cwd, entry) : entry,
-	);
+	// Determine files to lint
+	let filesToLint: string[];
+	let isGlobPattern: boolean;
+	let discoveryErrors: ImportGraphError[] = [];
 
-	if (files.length === 0) {
+	if (options.include && options.include.length > 0) {
+		// User provided explicit patterns
+		filesToLint = options.include.filter((p) => !p.startsWith("!"));
+		isGlobPattern = true;
+	} else {
+		// Default: discover files from package.json exports using import graph
+		const packageJsonPath = join(context.cwd, "package.json");
+		const graph = new ImportGraph({ rootDir: context.cwd });
+		const result = graph.traceFromPackageExports(packageJsonPath);
+
+		filesToLint = result.files;
+		discoveryErrors = result.errors;
+		isGlobPattern = false;
+
+		// Log any discovery warnings
+		for (const error of discoveryErrors) {
+			logger.warn(error.message);
+		}
+	}
+
+	if (filesToLint.length === 0) {
 		logger.info("No files to lint");
 		return;
 	}
+
+	// Build ESLint config
+	const ignorePatterns = options.include?.filter((p) => p.startsWith("!")).map((p) => p.slice(1)) ?? [];
 
 	const eslint = new ESLint({
 		cwd: context.cwd,
 		overrideConfigFile: true,
 		overrideConfig: [
 			{
-				ignores: ["**/node_modules/**", "**/dist/**", "**/coverage/**"],
+				ignores: ["**/node_modules/**", "**/dist/**", "**/coverage/**", ...ignorePatterns],
 			},
 			{
-				files: ["**/*.ts", "**/*.tsx"],
+				files: isGlobPattern ? filesToLint : ["**/*.ts", "**/*.tsx"],
 				languageOptions: {
 					parser: tsParser as Parameters<typeof ESLint.prototype.lintFiles>[0],
 				},
 				plugins: { tsdoc: tsdocPlugin as Record<string, unknown> },
 				rules: {
-					"tsdoc/syntax": "error",
+					"tsdoc/syntax": "error" as const,
 				},
 			},
 		],
 	});
 
-	const results = await eslint.lintFiles(files);
+	const eslintResults = await eslint.lintFiles(filesToLint);
 
+	// Convert ESLint results to our format
+	const messages: LintMessage[] = [];
 	let errorCount = 0;
 	let warningCount = 0;
 
-	for (const result of results) {
+	for (const result of eslintResults) {
 		for (const msg of result.messages) {
-			if (msg.severity === 2) errorCount++;
-			else warningCount++;
+			messages.push({
+				filePath: result.filePath,
+				line: msg.line,
+				column: msg.column,
+				message: msg.message,
+				ruleId: msg.ruleId,
+				severity: msg.severity as 1 | 2,
+			});
+
+			if (msg.severity === 2) {
+				errorCount++;
+			} else {
+				warningCount++;
+			}
+		}
+	}
+
+	const results: LintResult = { errorCount, warningCount, messages };
+
+	// Clean up temp config if not persisting
+	if (!shouldPersist && tsdocConfigPath) {
+		try {
+			const { unlink } = await import("node:fs/promises");
+			await unlink(tsdocConfigPath);
+		} catch {
+			// Ignore cleanup errors
 		}
 	}
 
@@ -441,17 +581,20 @@ export async function runTsDocLint(context: BuildContext, options: TsDocLintOpti
 		return;
 	}
 
+	// Format and handle results
+	const formatted = formatLintResults(results, context.cwd);
 	const onError = options.onError ?? (BuildLogger.isCI() ? "throw" : "error");
 
 	if (errorCount > 0) {
-		const message = `TSDoc validation found ${errorCount} error(s)`;
 		if (onError === "throw") {
-			throw new Error(message);
+			throw new Error(`TSDoc validation failed:\n${formatted}`);
 		} else if (onError === "error") {
-			logger.error(message);
+			logger.error(`TSDoc validation errors:\n${formatted}`);
 		} else {
-			logger.warn(message);
+			logger.warn(`TSDoc validation warnings:\n${formatted}`);
 		}
+	} else if (warningCount > 0) {
+		logger.warn(`TSDoc validation warnings:\n${formatted}`);
 	}
 }
 
@@ -471,7 +614,7 @@ export async function runTsDocLint(context: BuildContext, options: TsDocLintOpti
  * @param context - The build context containing entries and options
  * @returns Object with `outputs` array and `success` boolean
  *
- * @public
+ * @internal
  */
 export async function runBunBuild(context: BuildContext): Promise<{ outputs: BuildArtifact[]; success: boolean }> {
 	const logger = BuildLogger.createEnvLogger(context.target);
@@ -664,7 +807,7 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
  * @param tempDtsDir - Directory to output generated declaration files
  * @returns `true` if generation succeeded, `false` otherwise
  *
- * @public
+ * @internal
  */
 export async function runTsgoGeneration(context: BuildContext, tempDtsDir: string): Promise<boolean> {
 	const logger = BuildLogger.createEnvLogger(context.target);
@@ -676,11 +819,13 @@ export async function runTsgoGeneration(context: BuildContext, tempDtsDir: strin
 
 	// Delete tsbuildinfo files to force rebuild (needed for composite projects)
 	// Without this, tsgo may skip generation if it thinks nothing changed
-	const { glob: globAsync } = await import("glob");
-	const tsbuildInfoGlob = join(context.cwd, "dist", ".tsbuildinfo*");
-	const tsbuildFiles = await globAsync(tsbuildInfoGlob);
-	for (const file of tsbuildFiles) {
-		await rm(file, { force: true }).catch(() => {});
+	const distDir = join(context.cwd, "dist");
+	if (existsSync(distDir)) {
+		const tsbuildInfoGlob = new Bun.Glob(".tsbuildinfo*");
+		// dot: true is required to match files starting with "."
+		for await (const file of tsbuildInfoGlob.scan({ cwd: distDir, absolute: true, dot: true })) {
+			await rm(file, { force: true }).catch(() => {});
+		}
 	}
 
 	// Use the existing TSConfigs system to create a properly configured temp tsconfig
@@ -750,10 +895,13 @@ export async function runTsgoGeneration(context: BuildContext, tempDtsDir: strin
  */
 async function copyUnbundledDeclarations(context: BuildContext, tempDtsDir: string): Promise<{ dtsFiles: string[] }> {
 	const logger = BuildLogger.createEnvLogger(context.target);
-	const { glob } = await import("glob");
 
-	// Find all .d.ts files in the temp directory
-	const dtsFiles = await glob("**/*.d.ts", { cwd: tempDtsDir });
+	// Find all .d.ts files in the temp directory using Bun.Glob
+	const dtsGlob = new Bun.Glob("**/*.d.ts");
+	const dtsFiles: string[] = [];
+	for await (const file of dtsGlob.scan({ cwd: tempDtsDir })) {
+		dtsFiles.push(file);
+	}
 	const copiedFiles: string[] = [];
 
 	for (const file of dtsFiles) {
@@ -788,13 +936,20 @@ async function copyUnbundledDeclarations(context: BuildContext, tempDtsDir: stri
  * @returns Object containing paths to bundled declaration and API model,
  *          or array of unbundled declaration files if bundling failed
  *
- * @public
+ * @internal
  */
 export async function runApiExtractor(
 	context: BuildContext,
 	tempDtsDir: string,
 	apiModel?: ApiModelOptions | boolean,
-): Promise<{ bundledDtsPath?: string; apiModelPath?: string; tsdocMetadataPath?: string; dtsFiles?: string[] }> {
+): Promise<{
+	bundledDtsPath?: string;
+	apiModelPath?: string;
+	tsdocMetadataPath?: string;
+	tsconfigPath?: string;
+	tsdocConfigPath?: string;
+	dtsFiles?: string[];
+}> {
 	const logger = BuildLogger.createEnvLogger(context.target);
 	const timer = BuildLogger.createTimer();
 
@@ -930,7 +1085,44 @@ export async function runApiExtractor(
 			logger.success(`Emitted TSDoc metadata: ${basename(tsdocMetadataPath)}`);
 		}
 
-		return { bundledDtsPath, apiModelPath, tsdocMetadataPath };
+		// Generate resolved tsconfig.json for virtual TypeScript environments
+		let tsconfigPath: string | undefined;
+		if (apiModelConfig.enabled) {
+			try {
+				const ts = await import("typescript");
+				const { TsconfigResolver } = await import("../plugins/utils/tsconfig-resolver.js");
+
+				const tsconfigFilePath = context.options.tsconfigPath ?? join(context.cwd, "tsconfig.json");
+				const configFile = ts.readConfigFile(tsconfigFilePath, ts.sys.readFile.bind(ts.sys));
+
+				if (!configFile.error) {
+					const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, context.cwd);
+					const resolver = new TsconfigResolver();
+					const resolved = resolver.resolve(parsed, context.cwd);
+
+					tsconfigPath = join(context.outdir, "tsconfig.json");
+					await writeFile(tsconfigPath, `${JSON.stringify(resolved, null, "\t")}\n`);
+					logger.success(`Emitted tsconfig.json (excluded from npm publish)`);
+				}
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error);
+				logger.warn(`Failed to generate tsconfig.json: ${errorMessage}`);
+			}
+		}
+
+		// Generate tsdoc.json in dist for documentation tools
+		let tsdocConfigPath: string | undefined;
+		if (apiModelConfig.enabled) {
+			try {
+				tsdocConfigPath = await TsDocConfigBuilder.writeConfigFile(apiModelConfig.tsdoc ?? {}, context.outdir);
+				logger.success(`Emitted tsdoc.json (excluded from npm publish)`);
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error);
+				logger.warn(`Failed to generate tsdoc.json: ${errorMessage}`);
+			}
+		}
+
+		return { bundledDtsPath, apiModelPath, tsdocMetadataPath, tsconfigPath, tsdocConfigPath };
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		logger.warn(`API Extractor error: ${errorMessage}, copying unbundled declarations`);
@@ -955,7 +1147,7 @@ export async function runApiExtractor(
  * @param context - The build context
  * @param filesArray - Set of files to include in the package.json `files` field
  *
- * @public
+ * @internal
  */
 export async function writePackageJson(context: BuildContext, filesArray: Set<string>): Promise<void> {
 	const isProduction = context.target === "npm";
@@ -998,7 +1190,7 @@ export async function writePackageJson(context: BuildContext, filesArray: Set<st
  * @param patterns - Array of file paths or copy pattern configurations
  * @returns Array of paths (relative to output directory) that were copied
  *
- * @public
+ * @internal
  */
 export async function copyFiles(context: BuildContext, patterns: (string | CopyPatternConfig)[]): Promise<string[]> {
 	const logger = BuildLogger.createEnvLogger(context.target);
@@ -1021,9 +1213,12 @@ export async function copyFiles(context: BuildContext, patterns: (string | CopyP
 		const stat = await import("node:fs/promises").then((m) => m.stat(fromPath));
 
 		if (stat.isDirectory()) {
-			// Copy directory recursively
-			const { glob } = await import("glob");
-			const files = await glob("**/*", { cwd: fromPath, nodir: true });
+			// Copy directory recursively using Bun.Glob
+			const dirGlob = new Bun.Glob("**/*");
+			const files: string[] = [];
+			for await (const file of dirGlob.scan({ cwd: fromPath, onlyFiles: true })) {
+				files.push(file);
+			}
 
 			for (const file of files) {
 				const srcFile = join(fromPath, file);
@@ -1072,26 +1267,14 @@ interface CopyFileDescriptor {
  * The copier only operates during `npm` target builds and is skipped in CI
  * environments to avoid side effects during automated builds.
  *
- * @example
- * Copy artifacts to a documentation directory:
- * ```typescript
- * import { LocalPathCopier } from '@savvy-web/bun-builder';
- * import type { BuildContext } from '@savvy-web/bun-builder';
- *
- * const copier = new LocalPathCopier(context, {
- *   apiModelFilename: 'my-package.api.json',
- *   tsdocMetadataFilename: 'tsdoc-metadata.json',
- * });
- *
- * await copier.copyToLocalPaths(['../docs/api', './site/api']);
- * ```
- *
- * @public
+ * @internal
  */
 export class LocalPathCopier {
 	private readonly context: BuildContext;
 	private readonly apiModelFilename: string;
 	private readonly tsdocMetadataFilename: string;
+	private readonly tsconfigFilename: string;
+	private readonly tsdocConfigFilename: string;
 
 	/**
 	 * Creates a new LocalPathCopier instance.
@@ -1104,11 +1287,15 @@ export class LocalPathCopier {
 		config: {
 			apiModelFilename: string;
 			tsdocMetadataFilename: string;
+			tsconfigFilename?: string;
+			tsdocConfigFilename?: string;
 		},
 	) {
 		this.context = context;
 		this.apiModelFilename = config.apiModelFilename;
 		this.tsdocMetadataFilename = config.tsdocMetadataFilename;
+		this.tsconfigFilename = config.tsconfigFilename ?? "tsconfig.json";
+		this.tsdocConfigFilename = config.tsdocConfigFilename ?? "tsdoc.json";
 	}
 
 	/**
@@ -1118,25 +1305,13 @@ export class LocalPathCopier {
 	 * For each specified path, copies the following files if they exist:
 	 * - API model JSON file (e.g., `my-package.api.json`)
 	 * - TSDoc metadata file (e.g., `tsdoc-metadata.json`)
+	 * - TSDoc configuration file (`tsdoc.json`)
+	 * - Resolved `tsconfig.json` for virtual TypeScript environments
 	 * - Transformed `package.json`
 	 *
 	 * Destination directories are created if they do not exist.
 	 *
 	 * @param localPaths - Array of relative paths to copy artifacts to
-	 *
-	 * @example
-	 * ```typescript
-	 * import { LocalPathCopier } from '@savvy-web/bun-builder';
-	 * import type { BuildContext } from '@savvy-web/bun-builder';
-	 *
-	 * const copier = new LocalPathCopier(context, {
-	 *   apiModelFilename: 'my-package.api.json',
-	 *   tsdocMetadataFilename: 'tsdoc-metadata.json',
-	 * });
-	 *
-	 * // Copy to documentation site directory
-	 * await copier.copyToLocalPaths(['../docs/api']);
-	 * ```
 	 */
 	async copyToLocalPaths(localPaths: string[]): Promise<void> {
 		const logger = BuildLogger.createEnvLogger(this.context.target);
@@ -1187,6 +1362,24 @@ export class LocalPathCopier {
 			});
 		}
 
+		const tsconfigSrc = join(this.context.outdir, this.tsconfigFilename);
+		if (existsSync(tsconfigSrc)) {
+			files.push({
+				src: tsconfigSrc,
+				dest: join(destinationDir, this.tsconfigFilename),
+				name: this.tsconfigFilename,
+			});
+		}
+
+		const tsdocConfigSrc = join(this.context.outdir, this.tsdocConfigFilename);
+		if (existsSync(tsdocConfigSrc)) {
+			files.push({
+				src: tsdocConfigSrc,
+				dest: join(destinationDir, this.tsdocConfigFilename),
+				name: this.tsdocConfigFilename,
+			});
+		}
+
 		const packageJsonSrc = join(this.context.outdir, "package.json");
 		if (existsSync(packageJsonSrc)) {
 			files.push({
@@ -1219,7 +1412,7 @@ export class LocalPathCopier {
  * @param target - The build target to execute
  * @returns Build result containing success status, outputs, and timing
  *
- * @public
+ * @internal
  */
 export async function executeBuild(options: BunLibraryBuilderOptions, target: BuildTarget): Promise<BuildResult> {
 	const cwd = process.cwd();
@@ -1326,7 +1519,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 		logger.warn("Declaration generation failed, continuing without .d.ts files");
 	} else {
 		// Phase 4: Bundle declarations with API Extractor
-		const { bundledDtsPath, apiModelPath, dtsFiles } = await runApiExtractor(
+		const { bundledDtsPath, apiModelPath, tsconfigPath, tsdocConfigPath, dtsFiles } = await runApiExtractor(
 			context,
 			tempDtsDir,
 			target === "npm" ? options.apiModel : undefined,
@@ -1346,6 +1539,41 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 		if (apiModelPath) {
 			// API model is excluded from npm publish
 			filesArray.add(`!${relative(outdir, apiModelPath)}`);
+		}
+
+		if (tsconfigPath) {
+			// tsconfig.json is excluded from npm publish (used by documentation tools)
+			filesArray.add("!tsconfig.json");
+		}
+
+		if (tsdocConfigPath) {
+			// tsdoc.json is excluded from npm publish (used by documentation tools)
+			filesArray.add("!tsdoc.json");
+		}
+
+		// Persist tsdoc.json to project root for IDE support (if configured and not already done by linting)
+		// Only persist if tsdocLint is disabled or didn't persist (to avoid duplicate writes)
+		const tsdocLintDidPersist =
+			options.tsdocLint &&
+			TsDocConfigBuilder.shouldPersist(
+				typeof options.tsdocLint === "object" ? options.tsdocLint.persistConfig : undefined,
+			);
+
+		if (target === "npm" && !tsdocLintDidPersist) {
+			const unscopedName = FileSystemUtils.getUnscopedPackageName(packageJson.name ?? "package");
+			const apiModelConfig = ApiModelConfigResolver.resolve(options.apiModel, unscopedName);
+			const tsdocOptions = apiModelConfig.tsdoc ?? {};
+
+			if (TsDocConfigBuilder.shouldPersist(tsdocOptions.persistConfig)) {
+				try {
+					const persistPath = TsDocConfigBuilder.getConfigPath(tsdocOptions.persistConfig, cwd);
+					await TsDocConfigBuilder.writeConfigFile(tsdocOptions, dirname(persistPath));
+					logger.success(`Persisted tsdoc.json to project root`);
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					logger.warn(`Failed to persist tsdoc.json: ${errorMessage}`);
+				}
+			}
 		}
 	}
 

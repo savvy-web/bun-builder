@@ -28,7 +28,7 @@ const magenta: typeof colors.magenta = colors.magenta;
 /**
  * Timer interface for measuring execution time.
  *
- * @public
+ * @internal
  */
 export interface Timer {
 	/**
@@ -49,7 +49,7 @@ export interface Timer {
  * Provides standard logging methods with consistent formatting.
  * All methods are automatically suppressed in test environments.
  *
- * @public
+ * @internal
  */
 export interface Logger {
 	/**
@@ -85,7 +85,7 @@ export interface Logger {
  * Provides environment-aware logging with build target context.
  * Includes additional methods for logging file operations and entry points.
  *
- * @public
+ * @internal
  */
 export interface EnvLogger extends Logger {
 	/**
@@ -107,7 +107,7 @@ export interface EnvLogger extends Logger {
 /**
  * File entry for the file table display.
  *
- * @public
+ * @internal
  */
 export interface FileEntry {
 	/**
@@ -169,7 +169,7 @@ export interface FileEntry {
  * // Output: info    [npm] Building...
  * ```
  *
- * @public
+ * @internal
  */
 // biome-ignore lint/complexity/noStaticOnlyClass: Intentional static-only class for API organization
 export class BuildLogger {

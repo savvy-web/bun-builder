@@ -140,11 +140,12 @@ bun-builder/
 │   │   └── bun-library-builder.test.ts
 │   ├── hooks/
 │   │   ├── build-lifecycle.ts   # Build phase implementations
-│   │   └── build-lifecycle.test.ts
+│   │   └── api-model-config-resolver.test.ts
 │   ├── plugins/utils/
 │   │   ├── entry-extractor.ts   # Entry point detection
 │   │   ├── catalog-resolver.ts  # Catalog protocol resolution
 │   │   ├── package-json-transformer.ts
+│   │   ├── tsconfig-resolver.ts # TSConfig resolution for virtual envs
 │   │   ├── file-utils.ts
 │   │   └── logger.ts
 │   ├── macros/
@@ -155,12 +156,12 @@ bun-builder/
 │   │   └── tsconfig/            # Base tsconfig JSON files
 │   └── types/
 │       ├── builder-types.ts     # Builder option types
-│       └── package-json.ts      # PackageJson type
+│       ├── package-json.ts      # PackageJson type
+│       └── tsconfig-json.d.ts   # TSConfig types
 ├── docs/                        # User documentation
 ├── bun.config.ts                # Self-builds using BunLibraryBuilder
 ├── package.json
-├── tsconfig.json
-└── vitest.config.ts
+└── tsconfig.json
 ```
 
 ## Code Standards

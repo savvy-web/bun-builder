@@ -17,13 +17,6 @@ import { BuildLogger } from "../plugins/utils/logger.js";
 import type { BuildResult, BuildTarget, BunLibraryBuilderOptions } from "../types/builder-types.js";
 
 /**
- * Package version embedded at compile time via Bun macro.
- *
- * @internal
- */
-const PACKAGE_VERSION: string = getVersion();
-
-/**
  * Bun-based library builder for modern ESM Node.js libraries.
  *
  * @remarks
@@ -115,6 +108,20 @@ const PACKAGE_VERSION: string = getVersion();
  * @public
  */
 export class BunLibraryBuilder {
+	/**
+	 * Package version embedded at compile time via Bun macro.
+	 *
+	 * @internal
+	 */
+	private static readonly VERSION: string = getVersion();
+
+	/**
+	 * Default build targets when none are specified.
+	 *
+	 * @internal
+	 */
+	private static readonly DEFAULT_TARGETS: BuildTarget[] = ["dev", "npm"];
+
 	/**
 	 * Builder configuration options.
 	 *
@@ -214,7 +221,7 @@ export class BunLibraryBuilder {
 		const timer = BuildLogger.createTimer();
 
 		// Print banner with version (embedded at compile time)
-		BuildLogger.printBanner(PACKAGE_VERSION);
+		BuildLogger.printBanner(BunLibraryBuilder.VERSION);
 
 		// Determine targets from args or options
 		const resolvedTargets = targets ?? this.resolveTargets();
@@ -245,15 +252,14 @@ export class BunLibraryBuilder {
 			}
 		}
 
-		const successful = results.filter((r) => r.success).length;
-		const failed = results.filter((r) => !r.success).length;
+		const failedCount = results.filter((r) => !r.success).length;
 
 		console.log(); // Blank line before summary
 
-		if (failed > 0) {
-			logger.error(`Build completed with ${failed} failure(s)`);
+		if (failedCount > 0) {
+			logger.error(`Build completed with ${failedCount} failure(s)`);
 		} else {
-			logger.ready(`Built ${successful} target(s) in ${BuildLogger.formatTime(timer.elapsed())}`);
+			logger.ready(`Built ${results.length} target(s) in ${BuildLogger.formatTime(timer.elapsed())}`);
 		}
 
 		return results;
@@ -323,7 +329,7 @@ export class BunLibraryBuilder {
 		}
 
 		// Use options or default to both targets
-		return this.options.targets ?? ["dev", "npm"];
+		return this.options.targets ?? BunLibraryBuilder.DEFAULT_TARGETS;
 	}
 }
 

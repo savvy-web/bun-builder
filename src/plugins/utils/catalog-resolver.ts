@@ -80,20 +80,6 @@ interface RootPackageJson {
 }
 
 /**
- * Prefix for catalog protocol references.
- *
- * @internal
- */
-const CATALOG_PREFIX = "catalog:";
-
-/**
- * Prefix for workspace protocol references.
- *
- * @internal
- */
-const WORKSPACE_PREFIX = "workspace:";
-
-/**
  * Manages Bun catalog resolution with caching.
  *
  * @remarks
@@ -107,11 +93,12 @@ const WORKSPACE_PREFIX = "workspace:";
  * root package.json is modified.
  *
  * @example
+ * Using the shared default instance:
  * ```typescript
  * import type { PackageJson } from '@savvy-web/bun-builder';
  * import { BunCatalogResolver } from '@savvy-web/bun-builder';
  *
- * const resolver = new BunCatalogResolver();
+ * const resolver = BunCatalogResolver.getDefault();
  *
  * const packageJson: PackageJson = {
  *   dependencies: { 'react': 'catalog:' },
@@ -121,9 +108,63 @@ const WORKSPACE_PREFIX = "workspace:";
  * // resolved.dependencies.react = "^19.0.0" (from catalog)
  * ```
  *
- * @public
+ * @example
+ * Creating a new instance for isolated testing:
+ * ```typescript
+ * import { BunCatalogResolver } from '@savvy-web/bun-builder';
+ *
+ * const resolver = new BunCatalogResolver();
+ * resolver.clearCache(); // Fresh cache for this instance
+ * ```
+ *
+ * @internal
  */
 export class BunCatalogResolver {
+	/**
+	 * Prefix for catalog protocol references.
+	 * @internal
+	 */
+	private static readonly CATALOG_PREFIX = "catalog:";
+
+	/**
+	 * Prefix for workspace protocol references.
+	 * @internal
+	 */
+	private static readonly WORKSPACE_PREFIX = "workspace:";
+
+	/**
+	 * Singleton instance for the default resolver.
+	 *
+	 * @internal
+	 */
+	private static defaultInstance: BunCatalogResolver | null = null;
+
+	/**
+	 * Gets the default BunCatalogResolver singleton instance.
+	 *
+	 * @remarks
+	 * Returns a shared resolver instance that caches catalog data
+	 * for improved performance across multiple resolution calls.
+	 * Use this for normal operations; create a new instance only
+	 * when isolated caching is needed (e.g., in tests).
+	 *
+	 * @returns The default BunCatalogResolver instance
+	 *
+	 * @example
+	 * ```typescript
+	 * import { BunCatalogResolver } from '@savvy-web/bun-builder';
+	 *
+	 * const resolver = BunCatalogResolver.getDefault();
+	 * const catalogs = await resolver.getCatalogs();
+	 * ```
+	 *
+	 */
+	static getDefault(): BunCatalogResolver {
+		if (!BunCatalogResolver.defaultInstance) {
+			BunCatalogResolver.defaultInstance = new BunCatalogResolver();
+		}
+		return BunCatalogResolver.defaultInstance;
+	}
 	/**
 	 * Cached catalog data.
 	 *
@@ -255,12 +296,12 @@ export class BunCatalogResolver {
 	 * @returns The resolved version or null if not found
 	 */
 	async resolveReference(reference: string, packageName: string): Promise<string | null> {
-		if (!reference.startsWith(CATALOG_PREFIX)) {
+		if (!reference.startsWith(BunCatalogResolver.CATALOG_PREFIX)) {
 			return null;
 		}
 
 		const catalogs = await this.getCatalogs();
-		const catalogName = reference.slice(CATALOG_PREFIX.length);
+		const catalogName = reference.slice(BunCatalogResolver.CATALOG_PREFIX.length);
 
 		if (!catalogName || catalogName === "") {
 			// Default catalog
@@ -286,7 +327,6 @@ export class BunCatalogResolver {
 		const dependencyFields = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"] as const;
 
 		const workspaceRoot = this.findWorkspaceRoot(dir);
-		const _catalogs = await this.getCatalogs(workspaceRoot ?? undefined);
 
 		let catalogCount = 0;
 		let workspaceCount = 0;
@@ -303,7 +343,7 @@ export class BunCatalogResolver {
 					continue;
 				}
 
-				if (version.startsWith(CATALOG_PREFIX)) {
+				if (version.startsWith(BunCatalogResolver.CATALOG_PREFIX)) {
 					const resolved = await this.resolveReference(version, name);
 					if (resolved) {
 						resolvedDeps[name] = resolved;
@@ -313,7 +353,7 @@ export class BunCatalogResolver {
 						logger.error(`Failed to resolve ${version} for ${name} - not found in catalog`);
 						resolvedDeps[name] = version;
 					}
-				} else if (version.startsWith(WORKSPACE_PREFIX)) {
+				} else if (version.startsWith(BunCatalogResolver.WORKSPACE_PREFIX)) {
 					// workspace:* -> resolve to actual version from the workspace package
 					// For now, we'll resolve workspace:* to the version from the local package
 					// In a real implementation, you'd look up the version from the workspace package
@@ -415,7 +455,8 @@ export class BunCatalogResolver {
 			for (const [name, version] of Object.entries(deps)) {
 				if (
 					typeof version === "string" &&
-					(version.startsWith(CATALOG_PREFIX) || version.startsWith(WORKSPACE_PREFIX))
+					(version.startsWith(BunCatalogResolver.CATALOG_PREFIX) ||
+						version.startsWith(BunCatalogResolver.WORKSPACE_PREFIX))
 				) {
 					unresolved.push({ field, name, version });
 				}
@@ -430,29 +471,4 @@ export class BunCatalogResolver {
 			throw new Error(`${unresolved.length} unresolved references would result in invalid package.json`);
 		}
 	}
-}
-
-/**
- * Singleton instance for default resolver.
- *
- * @internal
- */
-let defaultInstance: BunCatalogResolver | null = null;
-
-/**
- * Gets the default BunCatalogResolver singleton instance.
- *
- * @remarks
- * Returns a shared resolver instance that caches catalog data
- * for improved performance across multiple resolution calls.
- *
- * @returns The default BunCatalogResolver instance
- *
- * @public
- */
-export function getDefaultCatalogResolver(): BunCatalogResolver {
-	if (!defaultInstance) {
-		defaultInstance = new BunCatalogResolver();
-	}
-	return defaultInstance;
 }

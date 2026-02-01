@@ -4,7 +4,7 @@
 	"tasks": {
 		"build": {
 			"cache": true,
-			"outputs": ["dist/**"]
+			"outputs": ["dist/**", "dist/.tsbuildinfo.bundle", ".bun-builder/declarations/**"]
 		},
 		"build:dev": {
 			"dependsOn": ["typecheck"],
@@ -16,7 +16,7 @@
 				"*.ts",
 				"src/**/*"
 			],
-			"outputs": ["dist/dev/**"]
+			"outputs": ["dist/dev/**", "dist/.tsbuildinfo.dev.bundle", ".bun-builder/declarations/dev/**"]
 		},
 		"build:npm": {
 			"dependsOn": ["typecheck"],
@@ -28,7 +28,7 @@
 				"*.ts",
 				"src/**/*"
 			],
-			"outputs": ["dist/npm/**"]
+			"outputs": ["dist/npm/**", "dist/.tsbuildinfo.npm.bundle", ".bun-builder/declarations/npm/**"]
 		},
 		"test": {
 			"cache": false,

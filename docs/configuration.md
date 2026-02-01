@@ -187,6 +187,26 @@ export default BunLibraryBuilder.create({
 });
 ```
 
+### `bunTarget`
+
+Target runtime for Bun.build().
+
+| Property    | Type                            | Default |
+|-------------|---------------------------------|---------|
+| `bunTarget` | `'bun' \| 'node' \| 'browser'`  | `'bun'` |
+
+Controls which runtime APIs are available and how imports are resolved:
+
+- `'bun'` - Target Bun runtime (default, best for Bun-first packages)
+- `'node'` - Target pure Node.js environments
+- `'browser'` - Target browser environments
+
+```typescript
+export default BunLibraryBuilder.create({
+  bunTarget: 'node', // Use when targeting pure Node.js environments
+});
+```
+
 ---
 
 ## TypeScript Configuration

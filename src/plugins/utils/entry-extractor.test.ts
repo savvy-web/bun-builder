@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { PackageJson } from "../../types/package-json.js";
-import { EntryExtractor, extractEntriesFromPackageJson } from "./entry-extractor.js";
+import { EntryExtractor } from "./entry-extractor.js";
 
 describe("EntryExtractor", () => {
 	describe("extract() with exports field", () => {
@@ -293,15 +293,15 @@ describe("EntryExtractor", () => {
 	});
 });
 
-describe("extractEntriesFromPackageJson", () => {
-	test("functional wrapper works correctly", () => {
+describe("EntryExtractor.fromPackageJson", () => {
+	test("static method works correctly", () => {
 		const pkg: PackageJson = {
 			exports: {
 				".": "./src/index.ts",
 			},
 		};
 
-		const result = extractEntriesFromPackageJson(pkg);
+		const result = EntryExtractor.fromPackageJson(pkg);
 
 		expect(result.entries).toEqual({
 			index: "./src/index.ts",
@@ -315,7 +315,7 @@ describe("extractEntriesFromPackageJson", () => {
 			},
 		};
 
-		const result = extractEntriesFromPackageJson(pkg, { exportsAsIndexes: true });
+		const result = EntryExtractor.fromPackageJson(pkg, { exportsAsIndexes: true });
 
 		expect(result.entries).toEqual({
 			"foo/bar/index": "./src/foo/bar.ts",

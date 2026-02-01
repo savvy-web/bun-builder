@@ -95,50 +95,9 @@ export type {
 } from "./builders/bun-library-builder.js";
 
 // =============================================================================
-// Entry Point Extraction
-// =============================================================================
-
-export type { EntryExtractorOptions, ExtractedEntries } from "./plugins/utils/entry-extractor.js";
-export { EntryExtractor, extractEntriesFromPackageJson } from "./plugins/utils/entry-extractor.js";
-
-// =============================================================================
-// Catalog Resolution
-// =============================================================================
-
-export { BunCatalogResolver, getDefaultCatalogResolver } from "./plugins/utils/catalog-resolver.js";
-
-// =============================================================================
-// Package.json Transformation
-// =============================================================================
-
-export type { FlexibleExports } from "./plugins/utils/package-json-transformer.js";
-export { PackageJsonTransformer } from "./plugins/utils/package-json-transformer.js";
-
-// =============================================================================
-// File System Utilities
-// =============================================================================
-
-export type { FileExistResult } from "./plugins/utils/file-utils.js";
-export { FileSystemUtils, LocalPathValidator } from "./plugins/utils/file-utils.js";
-
-// =============================================================================
-// Build Lifecycle
-// =============================================================================
-
-export type { BuildContext, ResolvedApiModelConfig } from "./hooks/build-lifecycle.js";
-export { ApiModelConfigResolver, LocalPathCopier } from "./hooks/build-lifecycle.js";
-
-// =============================================================================
-// Logging Utilities
-// =============================================================================
-
-export type { EnvLogger, FileEntry, Logger, Timer } from "./plugins/utils/logger.js";
-export { BuildLogger } from "./plugins/utils/logger.js";
-
-// =============================================================================
 // Package.json Types
 // =============================================================================
 
-export type { JsonArray, JsonObject, JsonPrimitive, JsonValue, PackageJson } from "./types/package-json.js";
+export type { PackageJson } from "./types/package-json.js";
 
 /* v8 ignore stop */

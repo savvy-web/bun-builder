@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { BunCatalogResolver, getDefaultCatalogResolver } from "./catalog-resolver.js";
+import { BunCatalogResolver } from "./catalog-resolver.js";
 
 describe("BunCatalogResolver", () => {
 	describe("findWorkspaceRoot", () => {
@@ -138,16 +138,16 @@ describe("BunCatalogResolver", () => {
 	});
 });
 
-describe("getDefaultCatalogResolver", () => {
+describe("BunCatalogResolver.getDefault", () => {
 	test("returns singleton instance", () => {
-		const resolver1 = getDefaultCatalogResolver();
-		const resolver2 = getDefaultCatalogResolver();
+		const resolver1 = BunCatalogResolver.getDefault();
+		const resolver2 = BunCatalogResolver.getDefault();
 
 		expect(resolver1).toBe(resolver2);
 	});
 
 	test("returns BunCatalogResolver instance", () => {
-		const resolver = getDefaultCatalogResolver();
+		const resolver = BunCatalogResolver.getDefault();
 
 		expect(resolver).toBeInstanceOf(BunCatalogResolver);
 	});
