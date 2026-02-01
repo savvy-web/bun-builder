@@ -651,7 +651,9 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 			sourcemap: context.target === "dev" ? "linked" : "none",
 			minify: false,
 			external,
-			packages: "bundle",
+			// Use "external" to keep dependencies external (like RSLib's autoExternal)
+			// This prevents bundling node_modules and keeps the output small
+			packages: "external",
 			// Use [dir] to preserve directory structure and avoid collisions
 			// when multiple entry points have the same filename
 			naming: "[dir]/[name].[ext]",
