@@ -16,7 +16,7 @@
 
 import sortPkg from "sort-package-json";
 import type { PackageJson } from "../../types/package-json.js";
-import { getDefaultCatalogResolver } from "./catalog-resolver.js";
+import { BunCatalogResolver } from "./catalog-resolver.js";
 
 /**
  * Flexible type for package.json exports field.
@@ -25,7 +25,7 @@ import { getDefaultCatalogResolver } from "./catalog-resolver.js";
  * Supports all valid export field formats including strings, objects,
  * arrays, and nested conditional exports.
  *
- * @public
+ * @internal
  */
 export type FlexibleExports = PackageJson.Exports | Record<string, unknown> | FlexibleExports[] | undefined | null;
 
@@ -72,7 +72,7 @@ export type FlexibleExports = PackageJson.Exports | Record<string, unknown> | Fl
  * });
  * ```
  *
- * @public
+ * @internal
  */
 // biome-ignore lint/complexity/noStaticOnlyClass: Intentional static-only class for API organization
 export class PackageJsonTransformer {
@@ -393,7 +393,7 @@ export class PackageJsonTransformer {
 	 * ```
 	 */
 	static async resolveCatalogReferences(packageJson: PackageJson, dir: string = process.cwd()): Promise<PackageJson> {
-		const resolver = getDefaultCatalogResolver();
+		const resolver = BunCatalogResolver.getDefault();
 		return resolver.resolvePackageJson(packageJson, dir);
 	}
 

@@ -1,15 +1,12 @@
+import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import type { InspectOptions } from "node:util";
 import { inspect } from "node:util";
 // biome-ignore lint/correctness/useImportExtensions: we can import JSON files directly
 import nodeEcmaLibJson from "../public/tsconfig/ecma/lib.json" with { type: "json" };
 import type { TSConfigJsonWithSchema } from "../types/tsconfig-json.js";
-
-// Create require for CJS dependencies like tmp
-// biome-ignore lint/suspicious/noExplicitAny: createRequire returns a require function with any type
-const requireCJS: (id: string) => any = createRequire(import.meta.url);
 
 // Map of imported JSON files by their file path
 const jsonImports: Map<string, TSConfigJsonWithSchema> = new Map<string, TSConfigJsonWithSchema>([
@@ -26,9 +23,11 @@ const jsonImports: Map<string, TSConfigJsonWithSchema> = new Map<string, TSConfi
  * - Objects: recursively processed for all properties
  * - Other types: returned unchanged
  *
+ * @typeParam T - The type of the value being transformed
  * @param value - The value to transform (can be any type)
  * @param transform - Function to apply to each string
  * @returns The transformed value with the same structure
+ *
  * @internal
  */
 export function transformStringsDeep<T>(value: T, transform: (str: string) => string): T {
@@ -269,9 +268,10 @@ export class LibraryTSConfigFile extends TSConfigFile {
 	 *
 	 * @remarks
 	 * Creates a temporary tsconfig.json file with the bundle-mode transformations applied.
-	 * This is useful for passing to RSlib or other build tools that need a file path.
+	 * This is useful for passing to tsgo or other build tools that need a file path.
 	 *
-	 * The temporary file will be automatically cleaned up when the process exits.
+	 * The temporary file is created in the system temp directory and will be cleaned
+	 * up by the operating system according to its temp file policies.
 	 *
 	 * @param target - Build target (dev, npm)
 	 * @returns Absolute path to the temporary file
@@ -317,9 +317,10 @@ export class LibraryTSConfigFile extends TSConfigFile {
 			exclude: config.exclude?.map(toAbsolute),
 		};
 
-		const tmpFile = requireCJS("tmp").fileSync({ prefix: "tsconfig-bundle-", postfix: ".json" });
-		writeFileSync(tmpFile.name, JSON.stringify(absoluteConfig, null, "\t"));
-		return tmpFile.name;
+		// Create temp file using Bun-native methods
+		const tempFilePath = join(tmpdir(), `tsconfig-bundle-${randomUUID()}.json`);
+		writeFileSync(tempFilePath, JSON.stringify(absoluteConfig, null, "\t"));
+		return tempFilePath;
 	}
 }
 

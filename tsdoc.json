@@ -2,16 +2,6 @@
 	"$schema": "https://developer.microsoft.com/json-schemas/tsdoc/v0/tsdoc.schema.json",
 	"noStandardTags": false,
 	"reportUnsupportedHtmlElements": false,
-	"tagDefinitions": [
-		{
-			"tagName": "@category",
-			"syntaxKind": "modifier"
-		},
-		{
-			"tagName": "@default",
-			"syntaxKind": "modifier"
-		}
-	],
 	"supportForTags": {
 		"@deprecated": true,
 		"@label": true,
@@ -41,8 +31,6 @@
 		"@beta": true,
 		"@experimental": true,
 		"@internal": true,
-		"@public": true,
-		"@category": true,
-		"@default": true
+		"@public": true
 	}
 }

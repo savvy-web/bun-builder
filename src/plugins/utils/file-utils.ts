@@ -16,7 +16,7 @@ import { dirname, join, resolve } from "node:path";
 /**
  * Result of checking file existence.
  *
- * @public
+ * @internal
  */
 export interface FileExistResult {
 	/**
@@ -70,7 +70,7 @@ export interface FileExistResult {
  * const apiExtractor = FileSystemUtils.getApiExtractorPath();
  * ```
  *
- * @public
+ * @internal
  */
 // biome-ignore lint/complexity/noStaticOnlyClass: Intentional static-only class for API organization
 export class FileSystemUtils {
@@ -310,7 +310,7 @@ export class FileSystemUtils {
  * const isValid = LocalPathValidator.isValidPath(process.cwd(), '../docs/api');
  * ```
  *
- * @public
+ * @internal
  */
 // biome-ignore lint/complexity/noStaticOnlyClass: Intentional static-only class for API organization
 export class LocalPathValidator {

@@ -8,14 +8,7 @@ export default BunLibraryBuilder.create({
 		"@microsoft/api-extractor",
 		"@typescript/native-preview",
 		"typescript",
-		// Peer dependencies
-		"eslint",
-		"@typescript-eslint/parser",
-		"eslint-plugin-tsdoc",
 	],
-
-	// Bundle types from these packages into our .d.ts output
-	dtsBundledPackages: ["picocolors", "type-fest"],
 
 	// Enable API model generation for npm target
 	apiModel: {

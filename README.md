@@ -1,17 +1,21 @@
 # @savvy-web/bun-builder
 
+[![npm version](https://img.shields.io/npm/v/@savvy-web/bun-builder.svg)](https://www.npmjs.com/package/@savvy-web/bun-builder)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 A high-performance build system for modern ESM Node.js libraries using Bun's
-native bundler. Provides automatic entry detection, TypeScript declaration
-bundling, and package.json transformation with minimal configuration.
+native bundler. Build TypeScript packages with automatic entry detection,
+declaration bundling, and package.json transformation in milliseconds.
 
 ## Features
 
-- **Fast Builds** - Uses Bun's native bundler for sub-second build times
-- **Automatic Entry Detection** - Extracts entry points from package.json exports and bin fields
+- **Sub-Second Builds** - Leverages Bun's native bundler for fast iteration
+- **Zero Configuration** - Auto-detects entry points from package.json exports
 - **Declaration Bundling** - Generates rolled-up `.d.ts` files via tsgo + API Extractor
 - **Catalog Resolution** - Resolves Bun's `catalog:` and `workspace:` protocols for npm publishing
-- **Multi-Target Builds** - Single configuration produces both dev and npm outputs
-- **Self-Building** - The package builds itself using `BunLibraryBuilder`
+- **Multi-Target Output** - Single configuration produces both dev and npm builds
+- **API Documentation** - Generates `.api.json` files for documentation tools
+- **Self-Building** - This package builds itself using `BunLibraryBuilder`
 
 ## Installation
 
@@ -20,8 +24,6 @@ bun add -D @savvy-web/bun-builder
 ```
 
 ### Peer Dependencies
-
-The following peer dependencies are required:
 
 ```bash
 bun add -D @microsoft/api-extractor @typescript/native-preview typescript @types/bun
@@ -55,7 +57,25 @@ Run the build:
 bun run build
 ```
 
-## Basic Usage
+## TypeScript Configuration
+
+The package includes a pre-configured `tsconfig.json` optimized for library builds:
+
+```json
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@savvy-web/bun-builder/tsconfig/ecma/lib.json"
+}
+```
+
+This configuration includes:
+
+- ESNext target with bundler module resolution
+- Strict type checking enabled
+- Declaration generation for library distribution
+- Support for `.ts`, `.tsx`, `.mts`, `.cts`, and `.json` files
+
+## Usage
 
 The builder automatically extracts entry points from your `package.json` exports:
 
@@ -88,73 +108,9 @@ export default BunLibraryBuilder.create({
 });
 ```
 
-## Configuration Options
-
-| Option              | Type                             | Default              | Description                          |
-|---------------------|----------------------------------|----------------------|--------------------------------------|
-| `entry`             | `Record<string, string>`         | auto-detected        | Override entry points                |
-| `externals`         | `(string \| RegExp)[]`           | `[]`                 | Dependencies to exclude from bundle  |
-| `dtsBundledPackages`| `string[]`                       | `[]`                 | Packages to inline in `.d.ts` output |
-| `targets`           | `('dev' \| 'npm')[]`             | `['dev', 'npm']`     | Build targets to generate            |
-| `tsconfigPath`      | `string`                         | `'./tsconfig.json'`  | Path to TypeScript config            |
-| `tsdocLint`         | `boolean \| TsDocLintOptions`    | `false`              | Enable TSDoc validation              |
-| `apiModel`          | `boolean \| ApiModelOptions`     | `false`              | Generate API model JSON              |
-| `copyPatterns`      | `(string \| CopyPatternConfig)[]`| auto                 | Additional files to copy             |
-| `transform`         | `TransformPackageJsonFn`         | -                    | Modify output package.json           |
-| `transformFiles`    | `TransformFilesCallback`         | -                    | Post-build file processing           |
-| `bunTarget`         | `'bun' \| 'node' \| 'browser'`   | `'bun'`              | Target runtime for Bun.build()       |
-
-### API Model Options
-
-When `apiModel` is set to an object, the following options are available:
-
-| Option              | Type                             | Default                    | Description                          |
-|---------------------|----------------------------------|----------------------------|--------------------------------------|
-| `enabled`           | `boolean`                        | `false`                    | Enable API model generation          |
-| `filename`          | `string`                         | `'<package>.api.json'`     | API model filename                   |
-| `localPaths`        | `string[]`                       | `[]`                       | Copy artifacts to these paths        |
-| `tsdocMetadata`     | `boolean \| TsDocMetadataOptions`| `true` when enabled        | Generate tsdoc-metadata.json         |
-
-#### localPaths Feature
-
-The `localPaths` option copies API documentation artifacts to specified directories after build:
-
-```typescript
-import { BunLibraryBuilder } from '@savvy-web/bun-builder';
-
-export default BunLibraryBuilder.create({
-  apiModel: {
-    enabled: true,
-    localPaths: ['../website/docs/api/my-package'],
-  },
-});
-```
-
-This copies:
-
-- API model JSON file (e.g., `my-package.api.json`)
-- TSDoc metadata file (`tsdoc-metadata.json`)
-- Transformed `package.json`
-
-Note: Local path copying only runs for `npm` builds and is skipped in CI environments.
-
-#### Environment Variable
-
-You can also define local paths via the `BUN_BUILDER_LOCAL_PATHS` environment variable.
-This is useful for developer-specific paths that shouldn't be committed to version control.
-
-Create a `.env.local` file (automatically loaded by Bun and typically gitignored):
-
-```env
-BUN_BUILDER_LOCAL_PATHS=../website/docs/api/my-package,../other-project/lib
-```
-
-Paths are comma-separated. When both the environment variable and `apiModel.localPaths`
-are set, the paths are merged with user-defined paths taking precedence.
-
 ## Build Targets
 
-The builder produces two output targets with different optimizations:
+Two output targets with different optimizations:
 
 | Target | Source Maps | Output Directory | Description                              |
 |--------|-------------|------------------|------------------------------------------|
@@ -169,21 +125,12 @@ bun run bun.config.ts --env-mode npm   # npm build only
 bun run bun.config.ts                  # Both targets
 ```
 
-## CLI Usage
+## Build Output
 
-```bash
-# Build all targets
-bun run bun.config.ts
-
-# Build specific target
-bun run bun.config.ts --env-mode dev
-bun run bun.config.ts --env-mode npm
-```
-
-The build output shows detected entries, progress, and a file table:
+The build produces bundled ESM output with rolled-up types:
 
 ```text
-  bun-builder v0.1.0
+  bun-builder v0.2.0
 
 info    Building targets: dev, npm
 info    auto-detected entries { index: "./src/index.ts" }
@@ -213,7 +160,11 @@ ready   [dev] built in 287ms
 - [Configuration Reference](./docs/configuration.md) - Complete options documentation
 - [Package.json Transformation](./docs/package-json-transformation.md) - How exports and dependencies are transformed
 - [Declaration Bundling](./docs/declaration-bundling.md) - TypeScript declaration generation
-- [Advanced Usage](./docs/advanced-usage.md) - Programmatic API and custom plugins
+- [Advanced Usage](./docs/advanced-usage.md) - Programmatic API and custom pipelines
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup and guidelines.
 
 ## License
 

@@ -6,6 +6,8 @@ import type { TsConfigJson } from "type-fest";
  * @remarks
  * Extends type-fest's TsConfigJson to include the $schema property
  * for JSON schema validation in editors.
+ *
+ * @internal
  */
 export interface TSConfigJsonWithSchema extends TsConfigJson {
 	/**

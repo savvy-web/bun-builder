@@ -14,7 +14,7 @@ import type { PackageJson } from "../../types/package-json.js";
 /**
  * Options for entry extraction.
  *
- * @public
+ * @internal
  */
 export interface EntryExtractorOptions {
 	/**
@@ -43,7 +43,7 @@ export interface EntryExtractorOptions {
 /**
  * Result of entry extraction.
  *
- * @public
+ * @internal
  */
 export interface ExtractedEntries {
 	/**
@@ -121,7 +121,7 @@ export interface ExtractedEntries {
  * // result.entries = { "foo/bar/index": "./src/foo/bar.ts" }
  * ```
  *
- * @public
+ * @internal
  */
 export class EntryExtractor {
 	/**
@@ -138,6 +138,37 @@ export class EntryExtractor {
 	 */
 	constructor(options: EntryExtractorOptions = {}) {
 		this.options = options;
+	}
+
+	/**
+	 * Extracts entry points from a package.json file.
+	 *
+	 * @remarks
+	 * This static method provides a convenient way to extract entries without
+	 * explicitly creating an extractor instance. For repeated extractions with
+	 * the same options, consider creating an instance instead.
+	 *
+	 * @param packageJson - The package.json to extract entries from
+	 * @param options - Optional extraction configuration
+	 * @returns Object containing the extracted entry point mappings
+	 *
+	 * @example
+	 * ```typescript
+	 * import type { PackageJson } from '@savvy-web/bun-builder';
+	 * import { EntryExtractor } from '@savvy-web/bun-builder';
+	 *
+	 * const packageJson: PackageJson = {
+	 *   exports: { '.': './src/index.ts' },
+	 * };
+	 *
+	 * const { entries } = EntryExtractor.fromPackageJson(packageJson);
+	 * // entries = { "index": "./src/index.ts" }
+	 * ```
+	 *
+	 */
+	static fromPackageJson(packageJson: PackageJson, options?: EntryExtractorOptions): ExtractedEntries {
+		const extractor = new EntryExtractor(options);
+		return extractor.extract(packageJson);
 	}
 
 	/**
@@ -266,38 +297,4 @@ export class EntryExtractor {
 
 		return withoutPrefix.replace(/\//g, "-");
 	}
-}
-
-/**
- * Extracts TypeScript entry points from package.json.
- *
- * @remarks
- * This is a functional wrapper around the {@link EntryExtractor} class
- * for convenience when a one-off extraction is needed.
- *
- * @param packageJson - The package.json object to extract entries from
- * @param options - Configuration options for entry extraction
- * @returns Object containing the extracted entry point mappings
- *
- * @example
- * ```typescript
- * import type { PackageJson } from '@savvy-web/bun-builder';
- * import { extractEntriesFromPackageJson } from '@savvy-web/bun-builder';
- *
- * const packageJson: PackageJson = {
- *   exports: { '.': './src/index.ts' },
- * };
- *
- * const { entries } = extractEntriesFromPackageJson(packageJson);
- * // entries = { "index": "./src/index.ts" }
- * ```
- *
- * @public
- */
-export function extractEntriesFromPackageJson(
-	packageJson: PackageJson,
-	options?: EntryExtractorOptions,
-): ExtractedEntries {
-	const extractor = new EntryExtractor(options);
-	return extractor.extract(packageJson);
 }
