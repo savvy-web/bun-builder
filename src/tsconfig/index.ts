@@ -268,9 +268,10 @@ export class LibraryTSConfigFile extends TSConfigFile {
 	 *
 	 * @remarks
 	 * Creates a temporary tsconfig.json file with the bundle-mode transformations applied.
-	 * This is useful for passing to RSlib or other build tools that need a file path.
+	 * This is useful for passing to tsgo or other build tools that need a file path.
 	 *
-	 * The temporary file will be automatically cleaned up when the process exits.
+	 * The temporary file is created in the system temp directory and will be cleaned
+	 * up by the operating system according to its temp file policies.
 	 *
 	 * @param target - Build target (dev, npm)
 	 * @returns Absolute path to the temporary file

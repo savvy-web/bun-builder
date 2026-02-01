@@ -201,8 +201,11 @@ export class TsDocConfigBuilder {
 	 * When a subset of groups is specified, generates a config with
 	 * `noStandardTags: true` and explicitly defines only the tags from
 	 * the enabled groups.
+	 *
+	 * @param options - TSDoc configuration options
+	 * @param outputPath - Directory path or full file path (if ending in .json)
 	 */
-	static async writeConfigFile(options: TsDocOptions = {}, outputDir: string): Promise<string> {
+	static async writeConfigFile(options: TsDocOptions = {}, outputPath: string): Promise<string> {
 		const { tagDefinitions, supportForTags, useStandardTags } = TsDocConfigBuilder.build(options);
 
 		const tsdocConfig: Record<string, unknown> = {
@@ -221,7 +224,9 @@ export class TsDocConfigBuilder {
 			tsdocConfig.supportForTags = supportForTags;
 		}
 
-		const configPath = join(outputDir, "tsdoc.json");
+		// Allow callers to provide either a directory or a full config file path.
+		// If the path ends with .json, use it directly; otherwise, default to "tsdoc.json" in the directory.
+		const configPath = outputPath.endsWith(".json") ? outputPath : join(outputPath, "tsdoc.json");
 
 		// Check if file exists and compare objects to avoid unnecessary writes
 		if (existsSync(configPath)) {

@@ -470,7 +470,7 @@ export async function runTsDocLint(context: BuildContext, options: TsDocLintOpti
 
 	let tsdocConfigPath: string | undefined;
 	try {
-		tsdocConfigPath = await TsDocConfigBuilder.writeConfigFile(tsdocOptions, dirname(tsdocConfigOutputPath));
+		tsdocConfigPath = await TsDocConfigBuilder.writeConfigFile(tsdocOptions, tsdocConfigOutputPath);
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		logger.warn(`Failed to generate tsdoc.json: ${errorMessage}`);
@@ -1567,8 +1567,8 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 			if (TsDocConfigBuilder.shouldPersist(tsdocOptions.persistConfig)) {
 				try {
 					const persistPath = TsDocConfigBuilder.getConfigPath(tsdocOptions.persistConfig, cwd);
-					await TsDocConfigBuilder.writeConfigFile(tsdocOptions, dirname(persistPath));
-					logger.success(`Persisted tsdoc.json to project root`);
+					await TsDocConfigBuilder.writeConfigFile(tsdocOptions, persistPath);
+					logger.success(`Persisted tsdoc configuration to ${persistPath}`);
 				} catch (error) {
 					const errorMessage = error instanceof Error ? error.message : String(error);
 					logger.warn(`Failed to persist tsdoc.json: ${errorMessage}`);
