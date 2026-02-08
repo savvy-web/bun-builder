@@ -114,15 +114,15 @@ type BuildTarget = "dev" | "npm";
 
 **Key Functions:**
 
-| Function              | Purpose                                |
-|-----------------------|----------------------------------------|
-| `executeBuild()`      | Main orchestrator running all phases   |
-| `runTsDocLint()`      | Pre-build TSDoc validation             |
-| `runBunBuild()`       | Execute Bun.build() bundling           |
-| `runTsgoGeneration()` | Generate .d.ts with tsgo               |
-| `runApiExtractor()`   | Bundle declarations with API Extractor |
-| `writePackageJson()`  | Transform and write package.json       |
-| `copyFiles()`         | Copy additional assets to output       |
+| Function | Purpose |
+| --- | --- |
+| `executeBuild()` | Main orchestrator running all phases |
+| `runTsDocLint()` | Pre-build TSDoc validation |
+| `runBunBuild()` | Execute Bun.build() bundling |
+| `runTsgoGeneration()` | Generate .d.ts with tsgo |
+| `runApiExtractor()` | Bundle declarations with API Extractor |
+| `writePackageJson()` | Transform and write package.json |
+| `copyFiles()` | Copy additional assets to output |
 
 **Build Context Interface:**
 
@@ -225,15 +225,15 @@ catalog resolution. All methods are static on the `PackageJsonTransformer` class
 
 **Key Methods:**
 
-| Method                                               | Purpose                               |
-|------------------------------------------------------|---------------------------------------|
-| `PackageJsonTransformer.transformExportPath()`       | Strip src/ prefix, convert .ts to .js |
-| `PackageJsonTransformer.createTypePath()`            | Create .d.ts path from .js path       |
-| `PackageJsonTransformer.transformBin()`              | Transform bin field paths             |
-| `PackageJsonTransformer.transformExports()`          | Recursively transform exports field   |
+| Method | Purpose |
+| --- | --- |
+| `PackageJsonTransformer.transformExportPath()` | Strip src/ prefix, convert .ts to .js |
+| `PackageJsonTransformer.createTypePath()` | Create .d.ts path from .js path |
+| `PackageJsonTransformer.transformBin()` | Transform bin field paths |
+| `PackageJsonTransformer.transformExports()` | Recursively transform exports field |
 | `PackageJsonTransformer.applyBuildTransformations()` | Apply all RSlib-style transformations |
-| `PackageJsonTransformer.resolveCatalogReferences()`  | Resolve catalog: and workspace: refs  |
-| `PackageJsonTransformer.build()`                     | Complete transformation pipeline      |
+| `PackageJsonTransformer.resolveCatalogReferences()` | Resolve catalog: and workspace: refs |
+| `PackageJsonTransformer.build()` | Complete transformation pipeline |
 
 ```typescript
 import { PackageJsonTransformer } from '@savvy-web/bun-builder';
@@ -302,19 +302,19 @@ All methods are static on the `BuildLogger` class.
 
 **Key Methods:**
 
-| Method                            | Purpose                                  |
-|-----------------------------------|------------------------------------------|
-| `BuildLogger.isCI()`              | Check if running in CI environment       |
-| `BuildLogger.isTestEnvironment()` | Check if running in test environment     |
-| `BuildLogger.formatTime()`        | Format milliseconds to human-readable    |
-| `BuildLogger.formatSize()`        | Format bytes to human-readable           |
-| `BuildLogger.createTimer()`       | Create timer for performance measurement |
-| `BuildLogger.createLogger()`      | Create logger with bracketed prefix      |
-| `BuildLogger.createEnvLogger()`   | Create environment-aware logger          |
-| `BuildLogger.collectFileInfo()`   | Collect file sizes for file table        |
-| `BuildLogger.printBanner()`       | Print version banner                     |
-| `BuildLogger.printFileTable()`    | Print RSlib-style file table             |
-| `BuildLogger.printSummary()`      | Print build completion summary           |
+| Method | Purpose |
+| --- | --- |
+| `BuildLogger.isCI()` | Check if running in CI environment |
+| `BuildLogger.isTestEnvironment()` | Check if running in test environment |
+| `BuildLogger.formatTime()` | Format milliseconds to human-readable |
+| `BuildLogger.formatSize()` | Format bytes to human-readable |
+| `BuildLogger.createTimer()` | Create timer for performance measurement |
+| `BuildLogger.createLogger()` | Create logger with bracketed prefix |
+| `BuildLogger.createEnvLogger()` | Create environment-aware logger |
+| `BuildLogger.collectFileInfo()` | Collect file sizes for file table |
+| `BuildLogger.printBanner()` | Print version banner |
+| `BuildLogger.printFileTable()` | Print RSlib-style file table |
+| `BuildLogger.printSummary()` | Print build completion summary |
 
 ```typescript
 import { BuildLogger } from '@savvy-web/bun-builder';
@@ -343,14 +343,14 @@ on the `FileSystemUtils` class.
 
 **Key Methods:**
 
-| Method                                     | Purpose                          |
-|--------------------------------------------|----------------------------------|
-| `FileSystemUtils.fileExistsAsync()`        | Check if file exists (async)     |
-| `FileSystemUtils.packageJsonVersion()`     | Read package version             |
-| `FileSystemUtils.findWorkspaceRoot()`      | Find monorepo workspace root     |
-| `FileSystemUtils.getApiExtractorPath()`    | Get API Extractor package path   |
-| `FileSystemUtils.getTsgoBinPath()`         | Get tsgo binary path             |
-| `FileSystemUtils.getUnscopedPackageName()` | Strip @scope/ from package name  |
+| Method | Purpose |
+| --- | --- |
+| `FileSystemUtils.fileExistsAsync()` | Check if file exists (async) |
+| `FileSystemUtils.packageJsonVersion()` | Read package version |
+| `FileSystemUtils.findWorkspaceRoot()` | Find monorepo workspace root |
+| `FileSystemUtils.getApiExtractorPath()` | Get API Extractor package path |
+| `FileSystemUtils.getTsgoBinPath()` | Get tsgo binary path |
+| `FileSystemUtils.getUnscopedPackageName()` | Strip @scope/ from package name |
 
 ```typescript
 import { FileSystemUtils } from '@savvy-web/bun-builder';
@@ -369,10 +369,10 @@ that destination directories exist before attempting to copy build artifacts.
 
 **Key Methods:**
 
-| Method                              | Purpose                                |
-|-------------------------------------|----------------------------------------|
-| `LocalPathValidator.validatePaths()`| Validate all paths, throw on invalid   |
-| `LocalPathValidator.isValidPath()`  | Check single path, return boolean      |
+| Method | Purpose |
+| --- | --- |
+| `LocalPathValidator.validatePaths()` | Validate all paths, throw on invalid |
+| `LocalPathValidator.isValidPath()` | Check single path, return boolean |
 
 ```typescript
 import { LocalPathValidator } from '@savvy-web/bun-builder';
@@ -395,9 +395,9 @@ configuration values with all defaults applied.
 
 **Key Methods:**
 
-| Method                             | Purpose                                |
-|------------------------------------|----------------------------------------|
-| `ApiModelConfigResolver.resolve()` | Resolve options into full config object|
+| Method | Purpose |
+| --- | --- |
+| `ApiModelConfigResolver.resolve()` | Resolve options into full config object |
 
 ```typescript
 import { ApiModelConfigResolver } from '@savvy-web/bun-builder';
@@ -450,20 +450,20 @@ to a JSON-serializable tsconfig format for virtual TypeScript environments.
 
 **Static Conversion Methods:**
 
-| Method                           | Purpose                                    |
-|----------------------------------|--------------------------------------------|
-| `convertScriptTarget()`          | Convert ScriptTarget enum to string        |
-| `convertModuleKind()`            | Convert ModuleKind enum to string          |
-| `convertModuleResolution()`      | Convert ModuleResolutionKind enum to string|
-| `convertJsxEmit()`               | Convert JsxEmit enum to string             |
-| `convertModuleDetection()`       | Convert ModuleDetectionKind enum to string |
-| `convertNewLine()`               | Convert NewLineKind enum to string         |
-| `convertLibReference()`          | Convert lib.*.d.ts to short name           |
+| Method | Purpose |
+| --- | --- |
+| `convertScriptTarget()` | Convert ScriptTarget enum to string |
+| `convertModuleKind()` | Convert ModuleKind enum to string |
+| `convertModuleResolution()` | Convert ModuleResolutionKind enum to string |
+| `convertJsxEmit()` | Convert JsxEmit enum to string |
+| `convertModuleDetection()` | Convert ModuleDetectionKind enum to string |
+| `convertNewLine()` | Convert NewLineKind enum to string |
+| `convertLibReference()` | Convert lib.*.d.ts to short name |
 
 **Instance Method:**
 
-| Method                     | Purpose                                         |
-|----------------------------|-------------------------------------------------|
+| Method | Purpose |
+| --- | --- |
 | `resolve(parsed, rootDir)` | Transform ParsedCommandLine to ResolvedTsconfig |
 
 ```typescript
@@ -496,21 +496,21 @@ Extractor and documentation tools based on tag group selections.
 
 **Static Methods:**
 
-| Method                           | Purpose                                      |
-|----------------------------------|----------------------------------------------|
-| `build(options)`                 | Build tag config from options                |
-| `writeConfigFile(options, dir)`  | Write tsdoc.json to output directory         |
-| `getTagsForGroup(group)`         | Get standard tags for a group                |
-| `isCI()`                         | Detect CI environment                        |
-| `shouldPersist(config)`          | Determine if config should persist to disk   |
-| `getConfigPath(config, cwd)`     | Resolve output path for tsdoc.json           |
+| Method | Purpose |
+| --- | --- |
+| `build(options)` | Build tag config from options |
+| `writeConfigFile(options, dir)` | Write tsdoc.json to output directory |
+| `getTagsForGroup(group)` | Get standard tags for a group |
+| `isCI()` | Detect CI environment |
+| `shouldPersist(config)` | Determine if config should persist to disk |
+| `getConfigPath(config, cwd)` | Resolve output path for tsdoc.json |
 
 **Static Properties:**
 
-| Property           | Purpose                                    |
-|--------------------|--------------------------------------------|
-| `ALL_GROUPS`       | Array of all group names                   |
-| `TAG_GROUPS`       | Lazily computed tag definitions per group  |
+| Property | Purpose |
+| --- | --- |
+| `ALL_GROUPS` | Array of all group names |
+| `TAG_GROUPS` | Lazily computed tag definitions per group |
 
 ```typescript
 import { TsDocConfigBuilder } from '@savvy-web/bun-builder';
@@ -550,17 +550,17 @@ reachable from specified entry points. Used by TSDoc linting for file discovery.
 
 **Static Methods:**
 
-| Method                     | Purpose                                         |
-|----------------------------|-------------------------------------------------|
-| `fromEntries(paths, opts)` | Trace imports from entry file paths             |
-| `fromPackageExports(path)` | Trace imports from package.json exports         |
+| Method | Purpose |
+| --- | --- |
+| `fromEntries(paths, opts)` | Trace imports from entry file paths |
+| `fromPackageExports(path)` | Trace imports from package.json exports |
 
 **Instance Methods:**
 
-| Method                          | Purpose                                    |
-|---------------------------------|--------------------------------------------|
-| `traceFromEntries(entryPaths)`  | Trace imports from entry file paths        |
-| `traceFromPackageExports(path)` | Trace imports from package.json exports    |
+| Method | Purpose |
+| --- | --- |
+| `traceFromEntries(entryPaths)` | Trace imports from entry file paths |
+| `traceFromPackageExports(path)` | Trace imports from package.json exports |
 
 ```typescript
 // Internal usage example (not part of public API)
@@ -646,9 +646,9 @@ const result2 = ImportGraph.fromEntries(['./src/index.ts'], { rootDir: process.c
 Two build targets with different optimizations:
 
 | Target | Source Maps | Minify | API Model | Output Directory | Private |
-|--------|-------------|--------|-----------|------------------|---------|
-| `dev`  | linked      | false  | false     | `dist/dev/`      | true    |
-| `npm`  | none        | false  | true*     | `dist/npm/`      | false** |
+| --- | --- | --- | --- | --- | --- |
+| `dev` | linked | false | false | `dist/dev/` | true |
+| `npm` | none | false | true* | `dist/npm/` | false** |
 
 *API model only if `apiModel` option enabled
 **Based on `publishConfig.access` in source package.json
@@ -1101,11 +1101,11 @@ executeBuild(options, target)
 
 **Error Handling:**
 
-| onError   | Behavior                  |
-|-----------|---------------------------|
-| `"warn"`  | Log warnings, continue    |
-| `"error"` | Log errors, continue      |
-| `"throw"` | Throw Error, abort build  |
+| onError | Behavior |
+| --- | --- |
+| `"warn"` | Log warnings, continue |
+| `"error"` | Log errors, continue |
+| `"throw"` | Throw Error, abort build |
 
 Default: `"throw"` in CI, `"error"` locally
 
@@ -1497,13 +1497,13 @@ interface BunLibraryBuilderOptions {
 
 ### Build Target Differences
 
-| Option             | dev        | npm                    |
-|--------------------|------------|------------------------|
-| Source maps        | `"linked"` | `"none"`               |
-| Minify             | `false`    | `false`                |
-| API model          | `false`    | Per option             |
-| Catalog resolution | No         | Yes                    |
-| `private` field    | `true`     | Based on publishConfig |
+| Option | dev | npm |
+| --- | --- | --- |
+| Source maps | `"linked"` | `"none"` |
+| Minify | `false` | `false` |
+| API model | `false` | Per option |
+| Catalog resolution | No | Yes |
+| `private` field | `true` | Based on publishConfig |
 
 ### ApiModelOptions
 

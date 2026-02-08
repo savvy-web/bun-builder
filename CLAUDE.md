@@ -90,10 +90,10 @@ The build lifecycle in `src/hooks/build-lifecycle.ts` orchestrates:
 
 Two build targets with different optimizations:
 
-| Target | Source Maps | Minify | API Model | Output      |
-|--------|-------------|--------|-----------|-------------|
-| `dev`  | linked      | false  | false     | `dist/dev/` |
-| `npm`  | none        | false  | true      | `dist/npm/` |
+| Target | Source Maps | Minify | API Model | Output |
+| --- | --- | --- | --- | --- |
+| `dev` | linked | false | false | `dist/dev/` |
+| `npm` | none | false | true | `dist/npm/` |
 
 Targets selected via `--env-mode`:
 

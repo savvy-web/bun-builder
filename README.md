@@ -112,10 +112,10 @@ export default BunLibraryBuilder.create({
 
 Two output targets with different optimizations:
 
-| Target | Source Maps | Output Directory | Description                              |
-|--------|-------------|------------------|------------------------------------------|
-| `dev`  | linked      | `dist/dev/`      | Development build with debugging support |
-| `npm`  | none        | `dist/npm/`      | Optimized for npm publishing             |
+| Target | Source Maps | Output Directory | Description |
+| --- | --- | --- | --- |
+| `dev` | linked | `dist/dev/` | Development build with debugging support |
+| `npm` | none | `dist/npm/` | Optimized for npm publishing |
 
 Select a specific target via CLI:
 

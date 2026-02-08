@@ -416,7 +416,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -458,10 +458,10 @@ export default BunLibraryBuilder.create({
 
 The builder sets appropriate exit codes:
 
-| Code | Meaning                        |
-|------|--------------------------------|
-| 0    | All targets built successfully |
-| 1    | One or more targets failed     |
+| Code | Meaning |
+| --- | --- |
+| 0 | All targets built successfully |
+| 1 | One or more targets failed |
 
 Example error handling:
 

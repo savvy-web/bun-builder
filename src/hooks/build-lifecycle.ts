@@ -734,9 +734,7 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 				source, // e.g., "src/cli/index"
 				source.replace(/^src\//, ""), // e.g., "cli/index"
 				source.replace(/\/index$/, ""), // e.g., "src/cli"
-				source
-					.replace(/^src\//, "")
-					.replace(/\/index$/, ""), // e.g., "cli"
+				source.replace(/^src\//, "").replace(/\/index$/, ""), // e.g., "cli"
 			].filter((v) => v.length > 0);
 
 			for (const variant of variants) {

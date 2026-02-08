@@ -76,12 +76,12 @@ analyzes TypeScript declarations and produces:
 
 ### Benefits of Bundled Declarations
 
-| Feature             | Unbundled                    | Bundled              |
-|---------------------|------------------------------|----------------------|
-| File count          | Many `.d.ts` files           | Single `index.d.ts`  |
-| IDE performance     | Slower (more files to parse) | Faster               |
-| Package size        | Larger                       | Smaller              |
-| Consumer experience | Scattered types              | Clean single entry   |
+| Feature | Unbundled | Bundled |
+| --- | --- | --- |
+| File count | Many `.d.ts` files | Single `index.d.ts` |
+| IDE performance | Slower (more files to parse) | Faster |
+| Package size | Larger | Smaller |
+| Consumer experience | Scattered types | Clean single entry |
 
 ### Bundling Process
 

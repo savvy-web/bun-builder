@@ -20,9 +20,9 @@ Complete reference for all `BunLibraryBuilderOptions` configuration properties.
 
 Override automatically detected entry points.
 
-| Property | Type                     | Default                          |
-|----------|--------------------------|----------------------------------|
-| `entry`  | `Record<string, string>` | auto-detected from package.json  |
+| Property | Type | Default |
+| --- | --- | --- |
+| `entry` | `Record<string, string>` | auto-detected from package.json |
 
 By default, entry points are extracted from your `package.json` `exports` and
 `bin` fields. Use this option to override or supplement the detected entries.
@@ -42,8 +42,8 @@ export default BunLibraryBuilder.create({
 
 Generate index.js files in nested directories matching export paths.
 
-| Property           | Type      | Default |
-|--------------------|-----------|---------|
+| Property | Type | Default |
+| --- | --- | --- |
 | `exportsAsIndexes` | `boolean` | `false` |
 
 ```typescript
@@ -66,9 +66,9 @@ export default BunLibraryBuilder.create({
 
 Build targets to include in the build.
 
-| Property  | Type                   | Default            |
-|-----------|------------------------|--------------------|
-| `targets` | `('dev' \| 'npm')[]`   | `['dev', 'npm']`   |
+| Property | Type | Default |
+| --- | --- | --- |
+| `targets` | `('dev' \| 'npm')[]` | `['dev', 'npm']` |
 
 Can be overridden via CLI with `--env-mode dev` or `--env-mode npm`.
 
@@ -82,9 +82,9 @@ export default BunLibraryBuilder.create({
 
 Additional files or directories to copy to the output.
 
-| Property       | Type                              | Default |
-|----------------|-----------------------------------|---------|
-| `copyPatterns` | `(string \| CopyPatternConfig)[]` | auto    |
+| Property | Type | Default |
+| --- | --- | --- |
+| `copyPatterns` | `(string \| CopyPatternConfig)[]` | auto |
 
 The builder automatically copies `README.md`, `LICENSE`, and `./src/public/` or
 `./public/` directories if they exist.
@@ -112,11 +112,11 @@ export default BunLibraryBuilder.create({
 
 #### CopyPatternConfig
 
-| Property           | Type      | Default    | Description                                  |
-|--------------------|-----------|------------|----------------------------------------------|
-| `from`             | `string`  | required   | Source path or glob pattern                  |
-| `to`               | `string`  | `'./'`     | Destination path relative to output directory|
-| `noErrorOnMissing` | `boolean` | `false`    | Suppress errors for missing files            |
+| Property | Type | Default | Description |
+| --- | --- | --- | --- |
+| `from` | `string` | required | Source path or glob pattern |
+| `to` | `string` | `'./'` | Destination path relative to output directory |
+| `noErrorOnMissing` | `boolean` | `false` | Suppress errors for missing files |
 
 ---
 
@@ -126,9 +126,9 @@ export default BunLibraryBuilder.create({
 
 External dependencies that should not be bundled.
 
-| Property    | Type                   | Default |
-|-------------|------------------------|---------|
-| `externals` | `(string \| RegExp)[]` | `[]`    |
+| Property | Type | Default |
+| --- | --- | --- |
+| `externals` | `(string \| RegExp)[]` | `[]` |
 
 Matching dependencies are kept as external imports in the output.
 
@@ -146,9 +146,9 @@ export default BunLibraryBuilder.create({
 
 Additional Bun plugins to use during bundling.
 
-| Property  | Type          | Default |
-|-----------|---------------|---------|
-| `plugins` | `BunPlugin[]` | `[]`    |
+| Property | Type | Default |
+| --- | --- | --- |
+| `plugins` | `BunPlugin[]` | `[]` |
 
 Plugins are passed directly to `Bun.build()`.
 
@@ -171,9 +171,9 @@ export default BunLibraryBuilder.create({
 
 Build-time constant definitions.
 
-| Property | Type                     | Default |
-|----------|--------------------------|---------|
-| `define` | `Record<string, string>` | `{}`    |
+| Property | Type | Default |
+| --- | --- | --- |
+| `define` | `Record<string, string>` | `{}` |
 
 These constants are replaced at build time. The builder automatically defines
 `process.env.__PACKAGE_VERSION__` with the package version.
@@ -191,9 +191,9 @@ export default BunLibraryBuilder.create({
 
 Target runtime for Bun.build().
 
-| Property    | Type                            | Default |
-|-------------|---------------------------------|---------|
-| `bunTarget` | `'bun' \| 'node' \| 'browser'`  | `'bun'` |
+| Property | Type | Default |
+| --- | --- | --- |
+| `bunTarget` | `'bun' \| 'node' \| 'browser'` | `'bun'` |
 
 Controls which runtime APIs are available and how imports are resolved:
 
@@ -215,9 +215,9 @@ export default BunLibraryBuilder.create({
 
 Path to the TypeScript configuration file for the build.
 
-| Property       | Type     | Default              |
-|----------------|----------|----------------------|
-| `tsconfigPath` | `string` | `'./tsconfig.json'`  |
+| Property | Type | Default |
+| --- | --- | --- |
+| `tsconfigPath` | `string` | `'./tsconfig.json'` |
 
 Used by both tsgo for declaration generation and API Extractor for declaration
 bundling.
@@ -232,9 +232,9 @@ export default BunLibraryBuilder.create({
 
 Packages whose type declarations should be bundled into the output `.d.ts` files.
 
-| Property             | Type       | Default |
-|----------------------|------------|---------|
-| `dtsBundledPackages` | `string[]` | `[]`    |
+| Property | Type | Default |
+| --- | --- | --- |
+| `dtsBundledPackages` | `string[]` | `[]` |
 
 By default, type imports from dependencies are preserved as external references.
 Use this to inline type declarations from specific packages.
@@ -253,9 +253,9 @@ export default BunLibraryBuilder.create({
 
 Transform function to modify package.json before it is saved.
 
-| Property    | Type                     | Default |
-|-------------|--------------------------|---------|
-| `transform` | `TransformPackageJsonFn` | -       |
+| Property | Type | Default |
+| --- | --- | --- |
+| `transform` | `TransformPackageJsonFn` | - |
 
 Called after all standard transformations. Allows target-specific modifications.
 
@@ -287,9 +287,9 @@ type TransformPackageJsonFn = (context: {
 
 Callback for post-build file manipulation.
 
-| Property         | Type                     | Default |
-|------------------|--------------------------|---------|
-| `transformFiles` | `TransformFilesCallback` | -       |
+| Property | Type | Default |
+| --- | --- | --- |
+| `transformFiles` | `TransformFilesCallback` | - |
 
 Invoked after bundling and declaration generation but before the final
 package.json is written.
@@ -312,11 +312,11 @@ export default BunLibraryBuilder.create({ transformFiles });
 
 #### TransformFilesContext
 
-| Property     | Type                              | Description                                   |
-|--------------|-----------------------------------|-----------------------------------------------|
-| `outputs`    | `Map<string, Uint8Array\|string>` | Map of output filenames to content            |
-| `filesArray` | `Set<string>`                     | Files included in package.json `files` field  |
-| `target`     | `'dev' \| 'npm'`                  | Current build target                          |
+| Property | Type | Description |
+| --- | --- | --- |
+| `outputs` | `Map<string, Uint8Array\|string>` | Map of output filenames to content |
+| `filesArray` | `Set<string>` | Files included in package.json `files` field |
+| `target` | `'dev' \| 'npm'` | Current build target |
 
 ---
 
@@ -326,8 +326,8 @@ export default BunLibraryBuilder.create({ transformFiles });
 
 Options for TSDoc lint validation.
 
-| Property    | Type                          | Default |
-|-------------|-------------------------------|---------|
+| Property | Type | Default |
+| --- | --- | --- |
 | `tsdocLint` | `boolean \| TsDocLintOptions` | `false` |
 
 When `true`, uses default lint options. Validation runs before bundling.
@@ -351,20 +351,20 @@ export default BunLibraryBuilder.create({
 
 #### TsDocLintOptions
 
-| Property        | Type                             | Default                          | Description                  |
-|-----------------|----------------------------------|----------------------------------|------------------------------|
-| `enabled`       | `boolean`                        | `true`                           | Enable TSDoc linting         |
-| `onError`       | `'warn' \| 'error' \| 'throw'`   | `'throw'` in CI, `'error'` local | Error handling behavior      |
-| `include`       | `string[]`                       | auto from entries                | Files to lint                |
-| `persistConfig` | `boolean \| string`              | `true` locally                   | Write tsdoc.json file        |
-| `tsdoc`         | `TsDocOptions`                   | -                                | Custom TSDoc tag config      |
+| Property | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | `true` | Enable TSDoc linting |
+| `onError` | `'warn' \| 'error' \| 'throw'` | `'throw'` in CI, `'error'` local | Error handling behavior |
+| `include` | `string[]` | auto from entries | Files to lint |
+| `persistConfig` | `boolean \| string` | `true` locally | Write tsdoc.json file |
+| `tsdoc` | `TsDocOptions` | - | Custom TSDoc tag config |
 
 ### `apiModel`
 
 Options for API model generation.
 
-| Property   | Type                         | Default |
-|------------|------------------------------|---------|
+| Property | Type | Default |
+| --- | --- | --- |
 | `apiModel` | `boolean \| ApiModelOptions` | `false` |
 
 API models are JSON files containing parsed API documentation for documentation
@@ -388,13 +388,13 @@ export default BunLibraryBuilder.create({
 
 #### ApiModelOptions
 
-| Property        | Type                              | Default            | Description                       |
-|-----------------|-----------------------------------|--------------------|-----------------------------------|
-| `enabled`       | `boolean`                         | `false`            | Enable API model generation       |
-| `filename`      | `string`                          | `'<pkg>.api.json'` | Output filename                   |
-| `localPaths`    | `string[]`                        | -                  | Additional paths to copy API model|
-| `tsdoc`         | `TsDocOptions`                    | -                  | Custom TSDoc configuration        |
-| `tsdocMetadata` | `TsDocMetadataOptions \| boolean` | -                  | tsdoc-metadata.json options       |
+| Property | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | `false` | Enable API model generation |
+| `filename` | `string` | `'<pkg>.api.json'` | Output filename |
+| `localPaths` | `string[]` | - | Additional paths to copy API model |
+| `tsdoc` | `TsDocOptions` | - | Custom TSDoc configuration |
+| `tsdocMetadata` | `TsDocMetadataOptions \| boolean` | - | tsdoc-metadata.json options |
 
 ---
 
@@ -402,13 +402,13 @@ export default BunLibraryBuilder.create({
 
 The builder produces different outputs for each target:
 
-| Option             | `dev` Target                 | `npm` Target             |
-|--------------------|------------------------------|--------------------------|
-| Source maps        | `'linked'`                   | `'none'`                 |
-| Minification       | `false`                      | `false`                  |
-| API model          | `false`                      | Per `apiModel` option    |
-| Catalog resolution | No                           | Yes                      |
-| `private` field    | `true`                       | Based on `publishConfig` |
+| Option | `dev` Target | `npm` Target |
+| --- | --- | --- |
+| Source maps | `'linked'` | `'none'` |
+| Minification | `false` | `false` |
+| API model | `false` | Per `apiModel` option |
+| Catalog resolution | No | Yes |
+| `private` field | `true` | Based on `publishConfig` |
 
 ### Dev Target
 

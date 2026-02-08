@@ -32,11 +32,11 @@ writing to the output directory:
 
 TypeScript export paths are converted to their JavaScript equivalents:
 
-| Source Path                | Output Path           |
-|----------------------------|-----------------------|
-| `./src/index.ts`           | `./index.js`          |
-| `./src/utils/helpers.ts`   | `./utils/helpers.js`  |
-| `./exports/api.ts`         | `./api.js`            |
+| Source Path | Output Path |
+| --- | --- |
+| `./src/index.ts` | `./index.js` |
+| `./src/utils/helpers.ts` | `./utils/helpers.js` |
+| `./exports/api.ts` | `./api.js` |
 
 ### Automatic Type Declarations
 
@@ -133,11 +133,11 @@ Catalogs are defined in your workspace root `package.json`:
 
 ### Reference Protocols
 
-| Protocol         | Description              | Example                           |
-|------------------|--------------------------|-----------------------------------|
-| `catalog:`       | Default catalog          | `"react": "catalog:"`             |
-| `catalog:<name>` | Named catalog            | `"vitest": "catalog:testing"`     |
-| `workspace:*`    | Local workspace package  | `"@my-org/utils": "workspace:*"`  |
+| Protocol | Description | Example |
+| --- | --- | --- |
+| `catalog:` | Default catalog | `"react": "catalog:"` |
+| `catalog:<name>` | Named catalog | `"vitest": "catalog:testing"` |
+| `workspace:*` | Local workspace package | `"@my-org/utils": "workspace:*"` |
 
 ### Resolution Example
 
@@ -226,10 +226,10 @@ Files automatically excluded:
 
 The following fields are removed during transformation:
 
-| Field           | Reason                                         |
-|-----------------|------------------------------------------------|
+| Field | Reason |
+| --- | --- |
 | `publishConfig` | Build-time configuration, not needed in output |
-| `scripts`       | Build scripts not needed for consumers         |
+| `scripts` | Build scripts not needed for consumers |
 
 ### Private Field
 
@@ -277,10 +277,10 @@ export default BunLibraryBuilder.create({ transform });
 
 The transform function receives:
 
-| Property | Type             | Description                                 |
-|----------|------------------|---------------------------------------------|
-| `target` | `'dev' \| 'npm'` | Current build target                        |
-| `pkg`    | `PackageJson`    | Package.json after standard transformations |
+| Property | Type | Description |
+| --- | --- | --- |
+| `target` | `'dev' \| 'npm'` | Current build target |
+| `pkg` | `PackageJson` | Package.json after standard transformations |
 
 ### Transform Timing
 
