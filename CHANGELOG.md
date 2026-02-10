@@ -1,18 +1,26 @@
 # @savvy-web/rslib-builder
 
+## 0.4.0
+
+### Minor Changes
+
+- f657efc: Align with rslib-builder featureset: add multi-entry API model merging
+  with canonical reference rewriting, virtual entries for non-exported
+  bundles, format option for ESM/CJS output, forgottenExports control,
+  and TSDoc CI validation. Nest TSDoc lint config under apiModel.tsdoc.lint
+  and default apiModel to enabled.
+
 ## 0.3.0
 
 ### Minor Changes
 
 - 93553dd: ### Features
-
   - Add TSDoc linting with `eslint-plugin-tsdoc` and ImportGraph-based file discovery
   - Add TsDocConfigBuilder for generating and persisting tsdoc.json configuration
   - Add TsconfigResolver for emitting resolved tsconfig.json for documentation tools
   - Add tsdoc.json persistence to project root for IDE integration
 
   ### Improvements
-
   - Replace `glob` and `tmp` npm packages with Bun-native methods (`Bun.Glob`, `os.tmpdir()`)
   - Refactor to class-based API patterns with static methods
   - Move constants into classes as static properties (BunCatalogResolver, TsconfigResolver)
@@ -20,7 +28,6 @@
   - Reduce public API surface to only `BunLibraryBuilder` and types
 
   ### Documentation
-
   - Streamline README with links to detailed configuration docs
   - Add TypeScript configuration section explaining bundled tsconfig
   - Update design documentation to reflect current API
@@ -32,7 +39,6 @@
 - 6d92bfe: Add `BUN_BUILDER_LOCAL_PATHS` environment variable support and class-based API refactoring.
 
   ### New Features
-
   - **Environment variable for local paths**: Define `BUN_BUILDER_LOCAL_PATHS` in `.env.local` or other `.env` files to specify paths for copying build artifacts without modifying the build configuration. Paths are comma-separated and merged with `apiModel.localPaths` if both are set.
 
   - **Class-based utility API**: Refactored all utility functions into static methods on dedicated classes for better API organization:
@@ -43,7 +49,6 @@
     - `ApiModelConfigResolver` - API model configuration resolution
 
   ### Improvements
-
   - Improved test environment detection for Bun's test runner to suppress logging during tests
   - Added comprehensive TSDoc documentation with `@remarks` and `@example` blocks for all public APIs
 
@@ -52,7 +57,6 @@
 ### Patch Changes
 
 - ce07ef5: Fix build failures and improve error diagnostics:
-
   - Add `bunTarget` option (default: `"bun"`) to support Bun-specific APIs like `import { $ } from "bun"`
   - Show detailed error messages from Bun.build() with file paths and line numbers instead of generic "Bundle failed"
   - Fix entry naming collisions when multiple entries have the same filename (e.g., `src/index.ts` and `src/cli/index.ts`)
@@ -64,7 +68,6 @@
 - ab4be71: Initial release of @savvy-web/bun-builder - a high-performance build system for modern ESM Node.js libraries using Bun's native bundler.
 
   ## Features
-
   - **Fast Builds**: Uses Bun's native bundler for sub-second build times
   - **Automatic Entry Detection**: Extracts entry points from package.json `exports` and `bin` fields
   - **Declaration Bundling**: Generates rolled-up `.d.ts` files via tsgo + API Extractor
@@ -100,7 +103,6 @@
   begins. This helps catch documentation issues early in the development cycle.
 
   **New Features:**
-
   - `TsDocLintPlugin` - Standalone Rsbuild plugin for TSDoc validation
   - `tsdocLint` option in `NodeLibraryBuilder` for easy integration
   - Environment-aware defaults: throws errors in CI, logs errors locally
@@ -129,7 +131,6 @@
   **Dependencies:**
 
   The plugin requires optional peer dependencies when enabled:
-
   - `eslint`
   - `@typescript-eslint/parser`
   - `eslint-plugin-tsdoc`
@@ -138,7 +139,6 @@
   explaining how to install them.
 
   **Improvements:**
-
   - `TsDocConfigBuilder.writeConfigFile()` now compares existing config files using
     deep equality to avoid unnecessary writes and uses tabs for formatting
   - Added `deep-equal` package for robust object comparison
@@ -150,17 +150,14 @@
 - a5354b3: Refactor public API surface and add TSDoc validation tooling.
 
   **Breaking Changes:**
-
   - Remove `EntryExtractor`, `PackageJsonTransformer`, and `PnpmCatalog` classes from public exports (now internal implementation details)
 
   **New Features:**
-
   - Add `TsDocConfigBuilder` to public API for custom TSDoc configurations
   - Add ESLint with `eslint-plugin-tsdoc` for TSDoc syntax validation
   - Add `lint:tsdoc` npm script and lint-staged integration
 
   **Improvements:**
-
   - Convert `PackageJsonTransformer` methods to standalone functions for better testability
   - Add granular type exports (`BuildTarget`, `TransformPackageJsonFn`, option types)
   - Improve TSDoc documentation with `@public` and `@internal` tags throughout
@@ -198,7 +195,6 @@
 ### Minor Changes
 
 - 9d4a183: Add TSDoc configuration support for API Extractor integration.
-
   - New `TsDocConfigBuilder` class for managing TSDoc configuration
   - Tag group support: core, extended, and discretionary tag categories
   - Custom tag definitions and `supportForTags` auto-derivation
@@ -227,7 +223,6 @@
   ECMAScript libraries.
 
   Build TypeScript packages effortlessly with:
-
   - **Zero-config bundling** - Automatic entry point detection from package.json
   - **Rolled-up type declarations** - API Extractor integration bundles your
     .d.ts files for clean public APIs
