@@ -191,21 +191,12 @@ export class TsDocConfigBuilder {
 	}
 
 	/**
-	 * Generates a tsdoc.json file from options.
-	 *
-	 * @remarks
-	 * When all groups are enabled (default), generates a minimal config with
-	 * `noStandardTags: false` so TSDoc automatically loads all standard tags.
-	 * Only custom tags need to be defined in this case.
-	 *
-	 * When a subset of groups is specified, generates a config with
-	 * `noStandardTags: true` and explicitly defines only the tags from
-	 * the enabled groups.
+	 * Builds the tsdoc.json config object without writing to disk.
 	 *
 	 * @param options - TSDoc configuration options
-	 * @param outputPath - Directory path or full file path (if ending in .json)
+	 * @returns The config object ready to be serialized
 	 */
-	static async writeConfigFile(options: TsDocOptions = {}, outputPath: string): Promise<string> {
+	static buildConfigObject(options: TsDocOptions = {}): Record<string, unknown> {
 		const { tagDefinitions, supportForTags, useStandardTags } = TsDocConfigBuilder.build(options);
 
 		const tsdocConfig: Record<string, unknown> = {
@@ -224,9 +215,79 @@ export class TsDocConfigBuilder {
 			tsdocConfig.supportForTags = supportForTags;
 		}
 
+		return tsdocConfig;
+	}
+
+	/**
+	 * Validates that an existing tsdoc.json matches the expected configuration.
+	 *
+	 * @remarks
+	 * Used in CI environments to ensure the committed tsdoc.json is up to date.
+	 * Throws an error if the file is missing or its content differs from what
+	 * the build would generate.
+	 *
+	 * @param options - TSDoc configuration options
+	 * @param configPath - Path to the existing tsdoc.json file
+	 * @throws If the file is missing, unparseable, or out of date
+	 */
+	static async validateConfigFile(options: TsDocOptions = {}, configPath: string): Promise<void> {
+		const expectedConfig = TsDocConfigBuilder.buildConfigObject(options);
+
+		if (!existsSync(configPath)) {
+			throw new Error(
+				`tsdoc.json not found at ${configPath}. Run the build locally to generate it, then commit the file.`,
+			);
+		}
+
+		let existingConfig: unknown;
+		try {
+			const existingContent = await readFile(configPath, "utf-8");
+			existingConfig = JSON.parse(existingContent);
+		} catch (error) {
+			throw new Error(
+				`Failed to parse existing tsdoc.json at ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+
+		if (JSON.stringify(existingConfig) !== JSON.stringify(expectedConfig)) {
+			throw new Error("tsdoc.json is out of date. Run the build locally to regenerate it, then commit the changes.");
+		}
+	}
+
+	/**
+	 * Generates a tsdoc.json file from options.
+	 *
+	 * @remarks
+	 * When all groups are enabled (default), generates a minimal config with
+	 * `noStandardTags: false` so TSDoc automatically loads all standard tags.
+	 * Only custom tags need to be defined in this case.
+	 *
+	 * When a subset of groups is specified, generates a config with
+	 * `noStandardTags: true` and explicitly defines only the tags from
+	 * the enabled groups.
+	 *
+	 * In CI environments, validates the existing file instead of writing,
+	 * throwing an error if the config is out of date.
+	 *
+	 * @param options - TSDoc configuration options
+	 * @param outputPath - Directory path or full file path (if ending in .json)
+	 * @param skipCIValidation - Skip CI validation even in CI environments
+	 */
+	static async writeConfigFile(
+		options: TsDocOptions = {},
+		outputPath: string,
+		skipCIValidation = false,
+	): Promise<string> {
 		// Allow callers to provide either a directory or a full config file path.
-		// If the path ends with .json, use it directly; otherwise, default to "tsdoc.json" in the directory.
 		const configPath = outputPath.endsWith(".json") ? outputPath : join(outputPath, "tsdoc.json");
+
+		// In CI, validate instead of write (unless explicitly skipped)
+		if (TsDocConfigBuilder.isCI() && !skipCIValidation) {
+			await TsDocConfigBuilder.validateConfigFile(options, configPath);
+			return configPath;
+		}
+
+		const tsdocConfig = TsDocConfigBuilder.buildConfigObject(options);
 
 		// Check if file exists and compare objects to avoid unnecessary writes
 		if (existsSync(configPath)) {
