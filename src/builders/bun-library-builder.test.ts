@@ -149,6 +149,17 @@ describe("BunLibraryBuilder options", () => {
 		expect(builder).toBeInstanceOf(BunLibraryBuilder);
 	});
 
+	test("virtualEntries accepts config objects", () => {
+		const builder = new BunLibraryBuilder({
+			virtualEntries: {
+				"pnpmfile.cjs": { source: "./src/pnpmfile.ts", format: "cjs" },
+				"setup.js": { source: "./src/setup.ts" },
+			},
+		});
+
+		expect(builder).toBeInstanceOf(BunLibraryBuilder);
+	});
+
 	test("transform accepts function", () => {
 		const builder = new BunLibraryBuilder({
 			transform: ({ target, pkg }) => {

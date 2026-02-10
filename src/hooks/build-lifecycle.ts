@@ -1820,11 +1820,109 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 		});
 	}
 
-	// Phase 7: Write package.json
+	// Phase 7: Virtual entries
+	const virtualEntries = options.virtualEntries ?? {};
+	if (Object.keys(virtualEntries).length > 0) {
+		const virtualLogger = BuildLogger.createEnvLogger(target);
+		const virtualTimer = BuildLogger.createTimer();
+
+		// Group virtual entries by format
+		const byFormat = new Map<string, Map<string, string>>();
+		for (const [outputName, config] of Object.entries(virtualEntries)) {
+			const entryFormat = config.format ?? "esm";
+			let formatMap = byFormat.get(entryFormat);
+			if (!formatMap) {
+				formatMap = new Map();
+				byFormat.set(entryFormat, formatMap);
+			}
+			// Strip extension from output name to get entry name
+			const entryName = outputName.replace(/\.(c|m)?js$/, "");
+			formatMap.set(entryName, config.source);
+		}
+
+		// Build each format group
+		for (const [format, entries] of byFormat) {
+			const entrypoints = [...entries.values()].map((entry) => (entry.startsWith("./") ? join(cwd, entry) : entry));
+
+			const external: string[] = [];
+			if (options.externals) {
+				for (const ext of options.externals) {
+					if (typeof ext === "string") {
+						external.push(ext);
+					} else if (ext instanceof RegExp) {
+						external.push(ext.source);
+					}
+				}
+			}
+
+			const virtualResult = await Bun.build({
+				entrypoints,
+				outdir,
+				target: options.bunTarget ?? "bun",
+				format: format as "esm" | "cjs",
+				splitting: false,
+				sourcemap: "none",
+				minify: false,
+				external,
+				packages: "external",
+				naming: "[dir]/[name].[ext]",
+			});
+
+			if (!virtualResult.success) {
+				virtualLogger.error(`Virtual entry build failed (${format}):`);
+				for (const log of virtualResult.logs) {
+					virtualLogger.error(`  ${String(log)}`);
+				}
+				continue;
+			}
+
+			// Rename outputs to match virtual entry names and add to filesArray
+			for (const output of virtualResult.outputs) {
+				const outputRelative = relative(outdir, output.path);
+				const outputBase = outputRelative.replace(/\.(c|m)?js$/, "");
+
+				// Find matching entry name
+				for (const [entryName, source] of entries) {
+					const normalizedSource = source.replace(/^\.\//, "").replace(/\.tsx?$/, "");
+					const variants = [
+						normalizedSource,
+						normalizedSource.replace(/^src\//, ""),
+						normalizedSource.replace(/\/index$/, ""),
+						normalizedSource.replace(/^src\//, "").replace(/\/index$/, ""),
+					].filter((v) => v.length > 0);
+
+					const isMatch = variants.some((v) => v === outputBase || outputRelative.replace(/\.(c|m)?js$/, "") === v);
+
+					if (isMatch) {
+						// Find the original output name for this entry
+						const originalOutputName = Object.keys(virtualEntries).find((name) => {
+							const stripped = name.replace(/\.(c|m)?js$/, "");
+							return stripped === entryName;
+						});
+
+						if (originalOutputName && originalOutputName !== outputRelative) {
+							const newPath = join(outdir, originalOutputName);
+							await mkdir(dirname(newPath), { recursive: true });
+							const { rename } = await import("node:fs/promises");
+							await rename(output.path, newPath);
+							filesArray.add(originalOutputName);
+						} else {
+							filesArray.add(outputRelative);
+						}
+						break;
+					}
+				}
+			}
+		}
+
+		virtualLogger.info(`Built virtual entries in ${BuildLogger.formatTime(virtualTimer.elapsed())}`);
+	}
+
+	// Phase 8: Write package.json
 	await writePackageJson(context, filesArray);
 	filesArray.add("package.json");
 
-	// Phase 8: Copy API artifacts to local paths (npm target only, skip in CI)
+	// Phase 9: Copy API artifacts to local paths (npm target only, skip in CI)
 	// This enables documentation workflows where API models need to be available
 	// in directories outside the standard build output.
 	if (target === "npm" && !BuildLogger.isCI()) {

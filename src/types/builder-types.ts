@@ -13,6 +13,50 @@ import type { BunPlugin } from "bun";
 import type { PackageJson } from "./package-json.js";
 
 /**
+ * Configuration for a virtual entry point.
+ *
+ * @remarks
+ * Virtual entries are bundled files that are NOT part of the package's
+ * public exports. They skip declaration generation and are not added to
+ * the exports field of package.json, but ARE included in the files array
+ * for publishing.
+ *
+ * Common use cases include pnpmfile.cjs, CLI shims, or other configuration
+ * files that need bundling but not type generation.
+ *
+ * @example
+ * ```typescript
+ * import type { VirtualEntryConfig } from '@savvy-web/bun-builder';
+ *
+ * const config: VirtualEntryConfig = {
+ *   source: './src/pnpmfile.ts',
+ *   format: 'cjs',
+ * };
+ * ```
+ *
+ * @public
+ */
+export interface VirtualEntryConfig {
+	/**
+	 * Path to the source file to bundle.
+	 *
+	 * @remarks
+	 * Resolved relative to the project root (cwd).
+	 */
+	source: string;
+
+	/**
+	 * Output format for the virtual entry.
+	 *
+	 * @remarks
+	 * Defaults to the builder's format option (or "esm" if not set).
+	 *
+	 * @defaultValue Inherits from builder format option
+	 */
+	format?: "esm" | "cjs";
+}
+
+/**
  * Build target environment for library output.
  *
  * @remarks
@@ -779,6 +823,26 @@ export interface BunLibraryBuilderOptions {
 	 * TSDoc lint is configured via `apiModel.tsdoc.lint`.
 	 */
 	apiModel?: ApiModelOptions | boolean;
+
+	/**
+	 * Virtual entry points that are bundled but not exported.
+	 *
+	 * @remarks
+	 * Virtual entries are files that need bundling but should not generate
+	 * type declarations or appear in package.json exports. They ARE added
+	 * to the files array for publishing.
+	 *
+	 * Keys are output filenames (e.g., "pnpmfile.cjs"), values are config objects.
+	 *
+	 * @example
+	 * ```typescript
+	 * virtualEntries: {
+	 *   'pnpmfile.cjs': { source: './src/pnpmfile.ts', format: 'cjs' },
+	 *   'setup.js': { source: './src/setup.ts' },
+	 * }
+	 * ```
+	 */
+	virtualEntries?: Record<string, VirtualEntryConfig>;
 
 	/**
 	 * Target runtime for Bun.build() bundling.

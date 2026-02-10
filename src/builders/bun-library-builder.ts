@@ -352,4 +352,5 @@ export type {
 	TsDocOptions,
 	TsDocTagDefinition,
 	TsDocTagGroup,
+	VirtualEntryConfig,
 } from "../types/builder-types.js";
