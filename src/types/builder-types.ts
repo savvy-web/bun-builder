@@ -860,6 +860,18 @@ export interface BunLibraryBuilderOptions {
 	virtualEntries?: Record<string, VirtualEntryConfig>;
 
 	/**
+	 * Output module format.
+	 *
+	 * @remarks
+	 * Controls the module format of the bundled output:
+	 * - `"esm"`: ECMAScript modules (default)
+	 * - `"cjs"`: CommonJS modules
+	 *
+	 * @defaultValue `"esm"`
+	 */
+	format?: "esm" | "cjs";
+
+	/**
 	 * Target runtime for Bun.build() bundling.
 	 *
 	 * @remarks

@@ -667,7 +667,7 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 			entrypoints,
 			outdir: context.outdir,
 			target: context.options.bunTarget ?? "bun",
-			format: "esm",
+			format: context.options.format ?? "esm",
 			splitting: false,
 			sourcemap: context.target === "dev" ? "linked" : "none",
 			minify: false,
@@ -1381,6 +1381,7 @@ export async function writePackageJson(context: BuildContext, filesArray: Set<st
 		isProduction,
 		processTSExports: true,
 		bundle: true,
+		format: context.options.format,
 		transform: transformFn,
 	});
 
