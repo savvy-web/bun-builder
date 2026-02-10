@@ -70,25 +70,29 @@ This directory is cleaned before each build.
 [API Extractor](https://api-extractor.com/) is a tool from Microsoft that
 analyzes TypeScript declarations and produces:
 
-- **Rolled-up declarations** - Single `.d.ts` file with all exports
-- **API reports** - Documentation of your public API
-- **API models** - JSON files for documentation generators
+- **Rolled-up declarations** -- Single `.d.ts` file per export entry
+- **API reports** -- Documentation of your public API
+- **API models** -- JSON files for documentation generators
 
 ### Benefits of Bundled Declarations
 
 | Feature | Unbundled | Bundled |
 | --- | --- | --- |
-| File count | Many `.d.ts` files | Single `index.d.ts` |
+| File count | Many `.d.ts` files | One per export entry |
 | IDE performance | Slower (more files to parse) | Faster |
 | Package size | Larger | Smaller |
 | Consumer experience | Scattered types | Clean single entry |
 
-### Bundling Process
+### Bundling Process (Multi-Entry)
 
-1. API Extractor reads the main entry point declaration
+API Extractor runs once per export entry point (bin entries are skipped):
+
+1. For each export entry, API Extractor reads the entry point declaration
 2. It follows imports to collect all related declarations
 3. Internal types are inlined, public types are preserved
-4. A single `index.d.ts` is written to the output directory
+4. A per-entry `.d.ts` file is written to the output directory
+5. Per-entry API models are merged into a single Package with multiple
+   EntryPoint members, with canonical references rewritten for sub-entries
 
 ### Output Example
 
@@ -104,11 +108,12 @@ analyzes TypeScript declarations and produces:
     └── config.d.ts
 ```
 
-**After bundling:**
+**After bundling (multi-entry):**
 
 ```text
 dist/npm/
-└── index.d.ts  (contains all types)
+├── index.d.ts   (bundled types for "." export)
+└── utils.d.ts   (bundled types for "./utils" export)
 ```
 
 ---
@@ -283,7 +288,9 @@ info    [npm] Copied 5 unbundled declaration file(s)
 
    ```typescript
    export default BunLibraryBuilder.create({
-     tsdocLint: true,
+     apiModel: {
+       tsdoc: { lint: true },
+     },
    });
    ```
 

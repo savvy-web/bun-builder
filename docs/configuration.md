@@ -9,7 +9,8 @@ Complete reference for all `BunLibraryBuilderOptions` configuration properties.
 - [Bundling Configuration](#bundling-configuration)
 - [TypeScript Configuration](#typescript-configuration)
 - [Transformation Hooks](#transformation-hooks)
-- [Documentation Options](#documentation-options)
+- [Documentation and API Model](#documentation-and-api-model)
+- [Virtual Entries](#virtual-entries)
 - [Build Target Differences](#build-target-differences)
 
 ---
@@ -75,6 +76,22 @@ Can be overridden via CLI with `--env-mode dev` or `--env-mode npm`.
 ```typescript
 export default BunLibraryBuilder.create({
   targets: ['npm'], // Only build npm target
+});
+```
+
+### `format`
+
+Output module format.
+
+| Property | Type | Default |
+| --- | --- | --- |
+| `format` | `'esm' \| 'cjs'` | `'esm'` |
+
+Controls the module format of the bundled output.
+
+```typescript
+export default BunLibraryBuilder.create({
+  format: 'cjs', // CommonJS output
 });
 ```
 
@@ -197,9 +214,9 @@ Target runtime for Bun.build().
 
 Controls which runtime APIs are available and how imports are resolved:
 
-- `'bun'` - Target Bun runtime (default, best for Bun-first packages)
-- `'node'` - Target pure Node.js environments
-- `'browser'` - Target browser environments
+- `'bun'` -- Target Bun runtime (default, best for Bun-first packages)
+- `'node'` -- Target pure Node.js environments
+- `'browser'` -- Target browser environments
 
 ```typescript
 export default BunLibraryBuilder.create({
@@ -320,60 +337,29 @@ export default BunLibraryBuilder.create({ transformFiles });
 
 ---
 
-## Documentation Options
-
-### `tsdocLint`
-
-Options for TSDoc lint validation.
-
-| Property | Type | Default |
-| --- | --- | --- |
-| `tsdocLint` | `boolean \| TsDocLintOptions` | `false` |
-
-When `true`, uses default lint options. Validation runs before bundling.
-
-```typescript
-// Enable with defaults
-export default BunLibraryBuilder.create({
-  tsdocLint: true,
-});
-
-// Custom configuration
-export default BunLibraryBuilder.create({
-  tsdocLint: {
-    enabled: true,
-    onError: 'warn',        // 'warn' | 'error' | 'throw'
-    include: ['src/index.ts', 'src/api/*.ts'],
-    persistConfig: true,    // Write tsdoc.json for IDE support
-  },
-});
-```
-
-#### TsDocLintOptions
-
-| Property | Type | Default | Description |
-| --- | --- | --- | --- |
-| `enabled` | `boolean` | `true` | Enable TSDoc linting |
-| `onError` | `'warn' \| 'error' \| 'throw'` | `'throw'` in CI, `'error'` local | Error handling behavior |
-| `include` | `string[]` | auto from entries | Files to lint |
-| `persistConfig` | `boolean \| string` | `true` locally | Write tsdoc.json file |
-| `tsdoc` | `TsDocOptions` | - | Custom TSDoc tag config |
+## Documentation and API Model
 
 ### `apiModel`
 
-Options for API model generation.
+Options for API model generation, TSDoc configuration, and TSDoc lint validation.
 
 | Property | Type | Default |
 | --- | --- | --- |
-| `apiModel` | `boolean \| ApiModelOptions` | `false` |
+| `apiModel` | `boolean \| ApiModelOptions` | `true` (enabled by default) |
+
+When `apiModel` is `undefined` (not specified), API model generation is enabled
+by default for npm builds. Set `apiModel: false` to explicitly disable it.
 
 API models are JSON files containing parsed API documentation for documentation
 generators. Only generated for the `npm` target.
 
 ```typescript
-// Enable with defaults
+// Uses defaults (API model enabled)
+export default BunLibraryBuilder.create({});
+
+// Disable API model
 export default BunLibraryBuilder.create({
-  apiModel: true,
+  apiModel: false,
 });
 
 // Custom configuration
@@ -381,7 +367,15 @@ export default BunLibraryBuilder.create({
   apiModel: {
     enabled: true,
     filename: 'my-package.api.json',
-    localPaths: ['./docs/api'],  // Copy API model to additional locations
+    localPaths: ['./docs/api'],
+    forgottenExports: 'include',
+    tsdoc: {
+      groups: ['core', 'extended', 'discretionary'],
+      lint: {
+        enabled: true,
+        onError: 'error',
+      },
+    },
   },
 });
 ```
@@ -390,11 +384,97 @@ export default BunLibraryBuilder.create({
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
-| `enabled` | `boolean` | `false` | Enable API model generation |
+| `enabled` | `boolean` | `true` | Enable API model generation |
 | `filename` | `string` | `'<pkg>.api.json'` | Output filename |
 | `localPaths` | `string[]` | - | Additional paths to copy API model |
-| `tsdoc` | `TsDocOptions` | - | Custom TSDoc configuration |
+| `tsdoc` | `TsDocOptions` | - | TSDoc configuration (shared with lint) |
 | `tsdocMetadata` | `TsDocMetadataOptions \| boolean` | - | tsdoc-metadata.json options |
+| `forgottenExports` | `'include' \| 'error' \| 'ignore'` | `'error'` in CI, `'include'` locally | How to handle forgotten export warnings |
+
+#### TsDocOptions (with nested lint)
+
+TSDoc configuration is shared between API model generation and lint validation.
+Configure once at `apiModel.tsdoc`, and lint picks up the same tag definitions.
+
+| Property | Type | Default | Description |
+| --- | --- | --- | --- |
+| `groups` | `TsDocTagGroup[]` | `['core', 'extended', 'discretionary']` | Tag groups to enable |
+| `tagDefinitions` | `TsDocTagDefinition[]` | - | Custom tag definitions |
+| `supportForTags` | `Record<string, boolean>` | - | Override tag support |
+| `persistConfig` | `boolean \| string` | `true` locally, `false` in CI | Persist tsdoc.json to disk |
+| `warnings` | `'log' \| 'fail' \| 'none'` | `'fail'` in CI, `'log'` locally | TSDoc warning behavior |
+| `lint` | `TsDocLintOptions \| boolean` | - | TSDoc lint configuration |
+
+#### TsDocLintOptions
+
+TSDoc lint validation runs before bundling to catch documentation issues early.
+
+| Property | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | `true` when apiModel enabled | Enable TSDoc linting |
+| `onError` | `'warn' \| 'error' \| 'throw'` | `'throw'` in CI, `'error'` locally | Error handling behavior |
+| `include` | `string[]` | auto from entries | Files to lint |
+
+```typescript
+// Enable lint with defaults
+export default BunLibraryBuilder.create({
+  apiModel: {
+    tsdoc: {
+      lint: true,
+    },
+  },
+});
+
+// Custom lint configuration
+export default BunLibraryBuilder.create({
+  apiModel: {
+    tsdoc: {
+      groups: ['core', 'extended', 'discretionary'],
+      tagDefinitions: [{ tagName: '@slot', syntaxKind: 'block' }],
+      lint: {
+        enabled: true,
+        onError: 'warn',
+        include: ['src/index.ts', 'src/api/*.ts'],
+      },
+    },
+  },
+});
+```
+
+---
+
+## Virtual Entries
+
+### `virtualEntries`
+
+Bundle files that are NOT part of the package's public exports.
+
+| Property | Type | Default |
+| --- | --- | --- |
+| `virtualEntries` | `Record<string, VirtualEntryConfig>` | - |
+
+Virtual entries are bundled but skip declaration generation and are not added to
+the exports field of package.json. They ARE included in the files array for
+publishing.
+
+Common use cases include pnpmfile.cjs, CLI shims, or configuration files that
+need bundling.
+
+```typescript
+export default BunLibraryBuilder.create({
+  virtualEntries: {
+    'pnpmfile.cjs': { source: './src/pnpmfile.ts', format: 'cjs' },
+    'setup.js': { source: './src/setup.ts' },
+  },
+});
+```
+
+#### VirtualEntryConfig
+
+| Property | Type | Default | Description |
+| --- | --- | --- | --- |
+| `source` | `string` | required | Path to the source file (relative to cwd) |
+| `format` | `'esm' \| 'cjs'` | Inherits from builder `format` option | Output format |
 
 ---
 
@@ -406,9 +486,10 @@ The builder produces different outputs for each target:
 | --- | --- | --- |
 | Source maps | `'linked'` | `'none'` |
 | Minification | `false` | `false` |
-| API model | `false` | Per `apiModel` option |
+| API model | `false` | Per `apiModel` option (default: enabled) |
 | Catalog resolution | No | Yes |
 | `private` field | `true` | Based on `publishConfig` |
+| Local path copying | No | Yes (non-CI only) |
 
 ### Dev Target
 
@@ -424,8 +505,9 @@ Production builds include:
 
 - No source maps (smaller package size)
 - Resolved `catalog:` and `workspace:` references
-- API model generation (if enabled)
+- API model generation (enabled by default)
 - `private` based on `publishConfig.access`
+- Build artifacts copied to `localPaths` (if configured, non-CI only)
 
 ---
 
@@ -442,6 +524,10 @@ const options: BunLibraryBuilderOptions = {
   // Build targets
   targets: ['dev', 'npm'],
 
+  // Output format
+  format: 'esm',
+  bunTarget: 'bun',
+
   // Bundling
   externals: ['lodash', /^@aws-sdk\//],
   dtsBundledPackages: ['type-fest'],
@@ -457,16 +543,22 @@ const options: BunLibraryBuilderOptions = {
     { from: './assets', to: './assets' },
   ],
 
-  // TSDoc validation
-  tsdocLint: {
-    enabled: true,
-    onError: 'error',
-  },
-
-  // API model generation
+  // API model generation with TSDoc lint
   apiModel: {
     enabled: true,
     localPaths: ['./docs/api'],
+    forgottenExports: 'include',
+    tsdoc: {
+      lint: {
+        enabled: true,
+        onError: 'error',
+      },
+    },
+  },
+
+  // Virtual entries (bundled but not exported)
+  virtualEntries: {
+    'pnpmfile.cjs': { source: './src/pnpmfile.ts', format: 'cjs' },
   },
 
   // Custom package.json transformation

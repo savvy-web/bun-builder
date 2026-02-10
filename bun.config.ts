@@ -9,16 +9,6 @@ export default BunLibraryBuilder.create({
 		"@typescript/native-preview",
 		"typescript",
 	],
-
-	// Configure API model and TSDoc linting
-	apiModel: {
-		tsdoc: {
-			lint: {
-				enabled: true,
-				onError: "error",
-			},
-		},
-	},
 	transform({ pkg }) {
 		delete pkg.devDependencies;
 		delete pkg.bundleDependencies;

@@ -437,20 +437,23 @@ jobs:
 
 ### Environment-Aware Configuration
 
+The builder automatically adjusts behavior based on CI detection, but you can
+customize further:
+
 ```typescript
 import { BunLibraryBuilder } from '@savvy-web/bun-builder';
 
-const isCI = process.env.CI === 'true';
-
 export default BunLibraryBuilder.create({
-  // Stricter in CI
-  tsdocLint: {
+  apiModel: {
     enabled: true,
-    onError: isCI ? 'throw' : 'error',
+    forgottenExports: 'include', // Less strict locally, auto "error" in CI
+    tsdoc: {
+      lint: {
+        enabled: true,
+        onError: 'error', // Auto "throw" in CI
+      },
+    },
   },
-
-  // Only generate API model in CI
-  apiModel: isCI,
 });
 ```
 
@@ -505,8 +508,9 @@ import type {
   TransformFilesCallback,
   TransformFilesContext,
 
-  // Copy patterns
+  // Copy and virtual entry patterns
   CopyPatternConfig,
+  VirtualEntryConfig,
 
   // TSDoc options
   TsDocLintOptions,
