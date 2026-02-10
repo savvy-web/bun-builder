@@ -24,12 +24,12 @@ describe("ApiModelConfigResolver.resolve", () => {
 	});
 
 	describe("basic resolution", () => {
-		test("returns disabled config for undefined", () => {
+		test("returns enabled config for undefined (default)", () => {
 			const config = ApiModelConfigResolver.resolve(undefined, "my-package");
 
-			expect(config.enabled).toBe(false);
+			expect(config.enabled).toBe(true);
 			expect(config.filename).toBe("my-package.api.json");
-			expect(config.tsdocMetadataEnabled).toBe(false);
+			expect(config.tsdocMetadataEnabled).toBe(true);
 		});
 
 		test("returns disabled config for false", () => {

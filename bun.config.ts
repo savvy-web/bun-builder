@@ -10,13 +10,12 @@ export default BunLibraryBuilder.create({
 		"typescript",
 	],
 
-	// Enable API model generation for npm target
+	// Configure API model and TSDoc linting
 	apiModel: {
-		enabled: true,
 		tsdoc: {
 			lint: {
 				enabled: true,
-				onError: "error", // Don't fail the build on TSDoc errors during development
+				onError: "error",
 			},
 		},
 	},

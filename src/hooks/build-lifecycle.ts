@@ -155,7 +155,7 @@ export class ApiModelConfigResolver {
 		const userLocalPaths = typeof apiModel === "object" && apiModel !== null ? (apiModel.localPaths ?? []) : [];
 		const localPaths = ApiModelConfigResolver.resolveLocalPaths(userLocalPaths);
 
-		if (apiModel === undefined || apiModel === false) {
+		if (apiModel === false) {
 			return {
 				enabled: false,
 				filename: `${unscopedPackageName}.api.json`,
@@ -166,7 +166,7 @@ export class ApiModelConfigResolver {
 			};
 		}
 
-		if (apiModel === true) {
+		if (apiModel === undefined || apiModel === true) {
 			return {
 				enabled: true,
 				filename: `${unscopedPackageName}.api.json`,

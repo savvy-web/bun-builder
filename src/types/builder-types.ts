@@ -471,7 +471,7 @@ export interface ApiModelOptions {
 	/**
 	 * Whether to enable API model generation.
 	 *
-	 * @defaultValue `false`
+	 * @defaultValue `true`
 	 */
 	enabled?: boolean;
 
