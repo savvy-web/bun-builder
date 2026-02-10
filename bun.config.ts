@@ -13,6 +13,12 @@ export default BunLibraryBuilder.create({
 	// Enable API model generation for npm target
 	apiModel: {
 		enabled: true,
+		tsdoc: {
+			lint: {
+				enabled: true,
+				onError: "error", // Don't fail the build on TSDoc errors during development
+			},
+		},
 	},
 	transform({ pkg }) {
 		delete pkg.devDependencies;
@@ -21,11 +27,5 @@ export default BunLibraryBuilder.create({
 		delete pkg.publishConfig;
 		delete pkg.devEngines;
 		return pkg;
-	},
-
-	// Enable TSDoc linting during build
-	tsdocLint: {
-		enabled: true,
-		onError: "error", // Don't fail the build on TSDoc errors during development
 	},
 });

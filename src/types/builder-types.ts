@@ -371,6 +371,21 @@ export interface TsDocOptions {
 	 * @defaultValue `"fail"` in CI, `"log"` otherwise
 	 */
 	warnings?: "log" | "fail" | "none";
+
+	/**
+	 * TSDoc lint validation options.
+	 *
+	 * @remarks
+	 * When `true`, uses default lint options. When an object, allows full
+	 * customization. When `false`, disables linting.
+	 *
+	 * Lint shares the parent TSDoc configuration (groups, tagDefinitions, etc.)
+	 * so tag definitions are configured once and used for both linting and
+	 * API Extractor.
+	 *
+	 * @defaultValue `true` when apiModel is enabled
+	 */
+	lint?: TsDocLintOptions | boolean;
 }
 
 /**
@@ -504,29 +519,32 @@ export type TsDocLintErrorBehavior = "warn" | "error" | "throw";
  * Linting is performed using ESLint with the `eslint-plugin-tsdoc` plugin.
  *
  * @example
- * Enable TSDoc linting with default options:
+ * Enable TSDoc linting via apiModel.tsdoc.lint:
  * ```typescript
  * import { BunLibraryBuilder } from '@savvy-web/bun-builder';
  *
  * export default BunLibraryBuilder.create({
- *   tsdocLint: true,
+ *   apiModel: {
+ *     tsdoc: { lint: true },
+ *   },
  * });
  * ```
  *
  * @example
- * Custom TSDoc lint configuration:
+ * Custom lint configuration:
  * ```typescript
- * import type { TsDocLintOptions } from '@savvy-web/bun-builder';
  * import { BunLibraryBuilder } from '@savvy-web/bun-builder';
  *
- * const lintOptions: TsDocLintOptions = {
- *   enabled: true,
- *   onError: 'warn',
- *   include: ['src/index.ts', 'src/api/utils.ts'],
- * };
- *
  * export default BunLibraryBuilder.create({
- *   tsdocLint: lintOptions,
+ *   apiModel: {
+ *     tsdoc: {
+ *       lint: {
+ *         enabled: true,
+ *         onError: 'warn',
+ *         include: ['src/index.ts'],
+ *       },
+ *     },
+ *   },
  * });
  * ```
  *
@@ -536,17 +554,9 @@ export interface TsDocLintOptions {
 	/**
 	 * Whether to enable TSDoc linting.
 	 *
-	 * @defaultValue `true` when `tsdocLint` option is provided
+	 * @defaultValue `true` when apiModel is enabled
 	 */
 	enabled?: boolean;
-
-	/**
-	 * TSDoc configuration for custom tag definitions.
-	 *
-	 * @remarks
-	 * Configures which TSDoc tags are recognized during validation.
-	 */
-	tsdoc?: TsDocOptions;
 
 	/**
 	 * Override automatic file discovery with explicit patterns.
@@ -567,15 +577,6 @@ export interface TsDocLintOptions {
 	 * @defaultValue `"throw"` in CI, `"error"` locally
 	 */
 	onError?: TsDocLintErrorBehavior;
-
-	/**
-	 * Persist tsdoc.json to disk for tool integration.
-	 *
-	 * @remarks
-	 * When `true`, writes a `tsdoc.json` file that IDEs and other tools
-	 * can use for TSDoc tag completion and validation.
-	 */
-	persistConfig?: boolean | string;
 }
 
 /**
@@ -774,18 +775,10 @@ export interface BunLibraryBuilderOptions {
 	 * When `true`, uses default API model options.
 	 * When an object, allows full customization.
 	 * API models are only generated for the `npm` target.
+	 *
+	 * TSDoc lint is configured via `apiModel.tsdoc.lint`.
 	 */
 	apiModel?: ApiModelOptions | boolean;
-
-	/**
-	 * Options for TSDoc lint validation.
-	 *
-	 * @remarks
-	 * When `true`, uses default lint options.
-	 * When an object, allows full customization.
-	 * Validation runs before bundling for all targets.
-	 */
-	tsdocLint?: TsDocLintOptions | boolean;
 
 	/**
 	 * Target runtime for Bun.build() bundling.

@@ -38,7 +38,6 @@ import type {
 	BuildTarget,
 	BunLibraryBuilderOptions,
 	CopyPatternConfig,
-	TsDocLintOptions,
 	TsDocOptions,
 } from "../types/builder-types.js";
 import type { PackageJson } from "../types/package-json.js";
@@ -447,6 +446,18 @@ function formatLintResults(results: LintResult, cwd: string): string {
 }
 
 /**
+ * Internal lint options combining TsDocLintOptions with shared tsdoc config.
+ *
+ * @internal
+ */
+interface ResolvedLintOptions {
+	enabled?: boolean;
+	include?: string[];
+	onError?: "warn" | "error" | "throw";
+	tsdoc?: TsDocOptions;
+}
+
+/**
  * Runs TSDoc lint validation before the build.
  *
  * @remarks
@@ -458,12 +469,12 @@ function formatLintResults(results: LintResult, cwd: string): string {
  * be persisted to the project root for IDE integration.
  *
  * @param context - The build context
- * @param options - TSDoc lint configuration options
+ * @param options - Resolved lint configuration options
  * @throws When `onError` is `"throw"` and validation errors are found
  *
  * @internal
  */
-export async function runTsDocLint(context: BuildContext, options: TsDocLintOptions): Promise<void> {
+export async function runTsDocLint(context: BuildContext, options: ResolvedLintOptions): Promise<void> {
 	const logger = BuildLogger.createLogger("tsdoc-lint");
 
 	if (options.enabled === false) {
@@ -474,7 +485,7 @@ export async function runTsDocLint(context: BuildContext, options: TsDocLintOpti
 
 	// Generate tsdoc.json config file
 	const tsdocOptions = options.tsdoc ?? {};
-	const persistConfig = options.persistConfig;
+	const persistConfig = tsdocOptions.persistConfig;
 	const shouldPersist = TsDocConfigBuilder.shouldPersist(persistConfig);
 	const tsdocConfigOutputPath = TsDocConfigBuilder.getConfigPath(persistConfig, context.cwd);
 
@@ -1662,9 +1673,23 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 	await mkdir(outdir, { recursive: true });
 
 	// Phase 1: Pre-build (TSDoc lint)
-	if (options.tsdocLint) {
-		const lintOptions = options.tsdocLint === true ? {} : options.tsdocLint;
-		await runTsDocLint(context, lintOptions);
+	// Lint is resolved from apiModel.tsdoc.lint (shared tsdoc config)
+	const apiModelOption = options.apiModel;
+	const apiModelObj = typeof apiModelOption === "object" && apiModelOption !== null ? apiModelOption : {};
+	const tsdocConfig = apiModelObj.tsdoc;
+	const lintConfig = tsdocConfig?.lint;
+
+	// Lint is enabled if apiModel is not false and lint is not false
+	const lintEnabled = apiModelOption !== false && lintConfig !== false;
+
+	if (lintEnabled && lintConfig !== undefined) {
+		// Extract shared tsdoc config (without lint) and merge with lint-specific options
+		const { lint: _lint, ...sharedTsdoc } = tsdocConfig ?? {};
+		const lintOptions = typeof lintConfig === "object" ? lintConfig : {};
+		await runTsDocLint(context, {
+			...lintOptions,
+			tsdoc: Object.keys(sharedTsdoc).length > 0 ? sharedTsdoc : undefined,
+		});
 	}
 
 	// Phase 2: Bundle with Bun.build()
@@ -1736,15 +1761,10 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 			filesArray.add("!tsdoc.json");
 		}
 
-		// Persist tsdoc.json to project root for IDE support (if configured and not already done by linting)
-		// Only persist if tsdocLint is disabled or didn't persist (to avoid duplicate writes)
-		const tsdocLintDidPersist =
-			options.tsdocLint &&
-			TsDocConfigBuilder.shouldPersist(
-				typeof options.tsdocLint === "object" ? options.tsdocLint.persistConfig : undefined,
-			);
-
-		if (target === "npm" && !tsdocLintDidPersist) {
+		// Persist tsdoc.json to project root for IDE support
+		// Uses the shared tsdoc config from apiModel.tsdoc (which also drives lint)
+		// Only persist if lint didn't already persist (to avoid duplicate writes)
+		if (target === "npm" && !lintEnabled) {
 			const unscopedName = FileSystemUtils.getUnscopedPackageName(packageJson.name ?? "package");
 			const apiModelConfig = ApiModelConfigResolver.resolve(options.apiModel, unscopedName);
 			const tsdocOptions = apiModelConfig.tsdoc ?? {};
