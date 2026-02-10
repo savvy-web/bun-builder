@@ -343,6 +343,16 @@ export interface BuildContext {
 	entries: Record<string, string>;
 
 	/**
+	 * Entry name to original export key mapping.
+	 *
+	 * @remarks
+	 * Maps entry names back to the original package.json export path
+	 * (e.g., `"utils"` → `"./utils"`, `"index"` → `"."`).
+	 * Bin entries are not included.
+	 */
+	exportPaths: Record<string, string>;
+
+	/**
 	 * Package version from package.json.
 	 */
 	version: string;
@@ -1432,7 +1442,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 	const extractor = new EntryExtractor({
 		exportsAsIndexes: options.exportsAsIndexes,
 	});
-	const { entries } = extractor.extract(packageJson);
+	const { entries, exportPaths } = extractor.extract(packageJson);
 
 	if (Object.keys(entries).length === 0) {
 		logger.error("No entry points found in package.json");
@@ -1459,6 +1469,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 		options,
 		outdir,
 		entries,
+		exportPaths,
 		version,
 		packageJson,
 	};

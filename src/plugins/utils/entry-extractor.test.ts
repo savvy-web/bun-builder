@@ -19,6 +19,9 @@ describe("EntryExtractor", () => {
 			expect(result.entries).toEqual({
 				index: "./src/index.ts",
 			});
+			expect(result.exportPaths).toEqual({
+				index: ".",
+			});
 		});
 
 		test("extracts object exports with subpaths", () => {
@@ -35,6 +38,10 @@ describe("EntryExtractor", () => {
 			expect(result.entries).toEqual({
 				index: "./src/index.ts",
 				utils: "./src/utils.ts",
+			});
+			expect(result.exportPaths).toEqual({
+				index: ".",
+				utils: "./utils",
 			});
 		});
 
@@ -54,6 +61,9 @@ describe("EntryExtractor", () => {
 			expect(result.entries).toEqual({
 				index: "./src/index.ts",
 			});
+			expect(result.exportPaths).toEqual({
+				index: ".",
+			});
 		});
 
 		test("extracts conditional exports with default condition", () => {
@@ -71,6 +81,9 @@ describe("EntryExtractor", () => {
 			expect(result.entries).toEqual({
 				index: "./src/index.ts",
 			});
+			expect(result.exportPaths).toEqual({
+				index: ".",
+			});
 		});
 
 		test("skips package.json export", () => {
@@ -86,6 +99,9 @@ describe("EntryExtractor", () => {
 
 			expect(result.entries).toEqual({
 				index: "./src/index.ts",
+			});
+			expect(result.exportPaths).toEqual({
+				index: ".",
 			});
 		});
 
@@ -103,6 +119,9 @@ describe("EntryExtractor", () => {
 			expect(result.entries).toEqual({
 				index: "./src/index.ts",
 			});
+			expect(result.exportPaths).toEqual({
+				index: ".",
+			});
 		});
 
 		test("resolves dist paths to src paths", () => {
@@ -117,6 +136,9 @@ describe("EntryExtractor", () => {
 
 			expect(result.entries).toEqual({
 				index: "./src/index.ts",
+			});
+			expect(result.exportPaths).toEqual({
+				index: ".",
 			});
 		});
 
@@ -135,6 +157,10 @@ describe("EntryExtractor", () => {
 				index: "./src/index.ts",
 				"components-button": "./src/components/button.ts",
 			});
+			expect(result.exportPaths).toEqual({
+				index: ".",
+				"components-button": "./components/button",
+			});
 		});
 
 		test("handles tsx files", () => {
@@ -150,6 +176,9 @@ describe("EntryExtractor", () => {
 			expect(result.entries).toEqual({
 				index: "./src/index.tsx",
 			});
+			expect(result.exportPaths).toEqual({
+				index: ".",
+			});
 		});
 
 		test("skips non-TypeScript files", () => {
@@ -163,6 +192,7 @@ describe("EntryExtractor", () => {
 			const result = extractor.extract(pkg);
 
 			expect(result.entries).toEqual({});
+			expect(result.exportPaths).toEqual({});
 		});
 
 		test("handles empty exports", () => {
@@ -172,6 +202,7 @@ describe("EntryExtractor", () => {
 			const result = extractor.extract(pkg);
 
 			expect(result.entries).toEqual({});
+			expect(result.exportPaths).toEqual({});
 		});
 	});
 
@@ -187,6 +218,8 @@ describe("EntryExtractor", () => {
 			expect(result.entries).toEqual({
 				"bin/cli": "./src/cli.ts",
 			});
+			// Bin entries do not populate exportPaths
+			expect(result.exportPaths).toEqual({});
 		});
 
 		test("extracts object bin with single command", () => {
@@ -202,6 +235,7 @@ describe("EntryExtractor", () => {
 			expect(result.entries).toEqual({
 				"bin/my-cli": "./src/bin/cli.ts",
 			});
+			expect(result.exportPaths).toEqual({});
 		});
 
 		test("extracts object bin with multiple commands", () => {
@@ -219,6 +253,7 @@ describe("EntryExtractor", () => {
 				"bin/cli-a": "./src/bin/a.ts",
 				"bin/cli-b": "./src/bin/b.ts",
 			});
+			expect(result.exportPaths).toEqual({});
 		});
 
 		test("resolves dist bin paths to src", () => {
@@ -234,6 +269,7 @@ describe("EntryExtractor", () => {
 			expect(result.entries).toEqual({
 				"bin/my-cli": "./src/cli.ts",
 			});
+			expect(result.exportPaths).toEqual({});
 		});
 
 		test("combines exports and bin", () => {
@@ -252,6 +288,10 @@ describe("EntryExtractor", () => {
 			expect(result.entries).toEqual({
 				index: "./src/index.ts",
 				"bin/my-cli": "./src/cli.ts",
+			});
+			// Only exports populate exportPaths, not bin
+			expect(result.exportPaths).toEqual({
+				index: ".",
 			});
 		});
 	});
@@ -272,6 +312,10 @@ describe("EntryExtractor", () => {
 				index: "./src/index.ts",
 				"foo/bar/index": "./src/foo/bar.ts",
 			});
+			expect(result.exportPaths).toEqual({
+				index: ".",
+				"foo/bar/index": "./foo/bar",
+			});
 		});
 
 		test("creates flat paths when disabled", () => {
@@ -289,6 +333,50 @@ describe("EntryExtractor", () => {
 				index: "./src/index.ts",
 				"foo-bar": "./src/foo/bar.ts",
 			});
+			expect(result.exportPaths).toEqual({
+				index: ".",
+				"foo-bar": "./foo/bar",
+			});
+		});
+	});
+
+	describe("exportPaths", () => {
+		test("maps entry names back to original export keys", () => {
+			const extractor = new EntryExtractor();
+			const pkg: PackageJson = {
+				exports: {
+					".": "./src/index.ts",
+					"./utils": "./src/utils.ts",
+					"./nested/one": "./src/nested/one.ts",
+				},
+			};
+
+			const result = extractor.extract(pkg);
+
+			expect(result.exportPaths).toEqual({
+				index: ".",
+				utils: "./utils",
+				"nested-one": "./nested/one",
+			});
+		});
+
+		test("does not include bin entries", () => {
+			const extractor = new EntryExtractor();
+			const pkg: PackageJson = {
+				exports: {
+					".": "./src/index.ts",
+				},
+				bin: {
+					"my-cli": "./src/cli.ts",
+				},
+			};
+
+			const result = extractor.extract(pkg);
+
+			expect(result.exportPaths).toEqual({
+				index: ".",
+			});
+			expect(result.exportPaths["bin/my-cli"]).toBeUndefined();
 		});
 	});
 });
@@ -306,6 +394,9 @@ describe("EntryExtractor.fromPackageJson", () => {
 		expect(result.entries).toEqual({
 			index: "./src/index.ts",
 		});
+		expect(result.exportPaths).toEqual({
+			index: ".",
+		});
 	});
 
 	test("passes options to extractor", () => {
@@ -319,6 +410,9 @@ describe("EntryExtractor.fromPackageJson", () => {
 
 		expect(result.entries).toEqual({
 			"foo/bar/index": "./src/foo/bar.ts",
+		});
+		expect(result.exportPaths).toEqual({
+			"foo/bar/index": "./foo/bar",
 		});
 	});
 });
