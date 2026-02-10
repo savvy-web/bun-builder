@@ -512,6 +512,21 @@ export interface ApiModelOptions {
 	 * used by the package, enabling downstream tools to understand them.
 	 */
 	tsdocMetadata?: TsDocMetadataOptions | boolean;
+
+	/**
+	 * How to handle "forgotten export" messages from API Extractor.
+	 *
+	 * @remarks
+	 * API Extractor reports ae-forgotten-export when a public API references
+	 * a declaration that is not exported. This option controls the behavior:
+	 *
+	 * - `"include"`: Log as warnings (default locally)
+	 * - `"error"`: Throw an error and fail the build (default in CI)
+	 * - `"ignore"`: Suppress silently
+	 *
+	 * @defaultValue `"error"` in CI, `"include"` locally
+	 */
+	forgottenExports?: "include" | "error" | "ignore";
 }
 
 /**

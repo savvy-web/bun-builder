@@ -1119,6 +1119,11 @@ export async function runApiExtractor(
 	const unscopedName = FileSystemUtils.getUnscopedPackageName(context.packageJson.name ?? "package");
 	const apiModelConfig = ApiModelConfigResolver.resolve(apiModel, unscopedName);
 
+	// Resolve forgottenExports behavior
+	const forgottenExportsOption =
+		(typeof apiModel === "object" && apiModel !== null ? apiModel.forgottenExports : undefined) ??
+		(BuildLogger.isCI() ? "error" : "include");
+
 	// Ensure output directory exists
 	await mkdir(context.outdir, { recursive: true });
 
@@ -1129,6 +1134,7 @@ export async function runApiExtractor(
 		const bundledDtsPaths: string[] = [];
 		const perEntryModels = new Map<string, Record<string, unknown>>();
 		let lastTsdocMetadataPath: string | undefined;
+		const collectedForgottenExports: { text: string; entryName: string }[] = [];
 
 		// Run API Extractor per entry
 		for (const [entryName, sourcePath] of exportEntries) {
@@ -1208,6 +1214,13 @@ export async function runApiExtractor(
 						message.logLevel = "none";
 						return;
 					}
+
+					// Handle forgotten export messages
+					if (message.messageId === "ae-forgotten-export" && message.text) {
+						collectedForgottenExports.push({ text: message.text, entryName });
+						message.logLevel = "none";
+						return;
+					}
 				},
 			});
 
@@ -1233,6 +1246,19 @@ export async function runApiExtractor(
 			logger.warn("API Extractor failed for all entries, copying unbundled declarations");
 			const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
 			return { dtsFiles };
+		}
+
+		// Process collected forgotten export messages
+		if (collectedForgottenExports.length > 0) {
+			const messages = collectedForgottenExports.map((m) => `  [${m.entryName}] ${m.text}`).join("\n");
+
+			if (forgottenExportsOption === "error") {
+				throw new Error(`Forgotten exports detected:\n${messages}`);
+			}
+			if (forgottenExportsOption === "include") {
+				logger.warn(`Forgotten exports detected:\n${messages}`);
+			}
+			// "ignore": do nothing
 		}
 
 		logger.info(
