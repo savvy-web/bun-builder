@@ -207,8 +207,51 @@ describe("TsDocConfigBuilder", () => {
 		});
 	});
 
-	describe("writeConfigFile", () => {
-		const tempDir = join(import.meta.dir, "__test_temp__");
+	describe("buildConfigObject", () => {
+		it("should return config with schema and noStandardTags", () => {
+			const config = TsDocConfigBuilder.buildConfigObject();
+			expect(config.$schema).toBe("https://developer.microsoft.com/json-schemas/tsdoc/v0/tsdoc.schema.json");
+			expect(config.noStandardTags).toBe(false);
+			expect(config.reportUnsupportedHtmlElements).toBe(false);
+		});
+
+		it("should not include tagDefinitions when all groups enabled", () => {
+			const config = TsDocConfigBuilder.buildConfigObject();
+			expect(config.tagDefinitions).toBeUndefined();
+		});
+
+		it("should include tagDefinitions when subset of groups", () => {
+			const config = TsDocConfigBuilder.buildConfigObject({ groups: ["core"] });
+			expect(config.noStandardTags).toBe(true);
+			expect(config.tagDefinitions).toBeDefined();
+			expect((config.tagDefinitions as unknown[]).length).toBeGreaterThan(0);
+		});
+
+		it("should include supportForTags", () => {
+			const config = TsDocConfigBuilder.buildConfigObject();
+			expect(config.supportForTags).toBeDefined();
+			expect((config.supportForTags as Record<string, boolean>)["@param"]).toBe(true);
+		});
+
+		it("should include custom tags in tagDefinitions", () => {
+			const config = TsDocConfigBuilder.buildConfigObject({
+				tagDefinitions: [{ tagName: "@slot", syntaxKind: "block" }],
+			});
+			expect(config.tagDefinitions).toBeDefined();
+			const defs = config.tagDefinitions as Array<{ tagName: string }>;
+			expect(defs.some((t) => t.tagName === "@slot")).toBe(true);
+		});
+
+		it("should produce same result as build() would for config shape", () => {
+			const config = TsDocConfigBuilder.buildConfigObject({ groups: ["core", "extended"] });
+			expect(config.noStandardTags).toBe(true);
+			expect(config.tagDefinitions).toBeDefined();
+			expect(config.supportForTags).toBeDefined();
+		});
+	});
+
+	describe("validateConfigFile", () => {
+		const tempDir = join(import.meta.dir, "__test_validate__");
 
 		beforeEach(async () => {
 			await rm(tempDir, { recursive: true, force: true });
@@ -217,6 +260,73 @@ describe("TsDocConfigBuilder", () => {
 
 		afterEach(async () => {
 			await rm(tempDir, { recursive: true, force: true });
+		});
+
+		it("should throw when file is missing", async () => {
+			const configPath = join(tempDir, "tsdoc.json");
+			await expect(TsDocConfigBuilder.validateConfigFile({}, configPath)).rejects.toThrow("tsdoc.json not found");
+		});
+
+		it("should throw when file contains invalid JSON", async () => {
+			const configPath = join(tempDir, "tsdoc.json");
+			await writeFile(configPath, "not valid json");
+			await expect(TsDocConfigBuilder.validateConfigFile({}, configPath)).rejects.toThrow(
+				"Failed to parse existing tsdoc.json",
+			);
+		});
+
+		it("should throw when config is out of date", async () => {
+			const configPath = join(tempDir, "tsdoc.json");
+			// Write a config that doesn't match what buildConfigObject would produce
+			await writeFile(configPath, JSON.stringify({ $schema: "old", noStandardTags: true }));
+			await expect(TsDocConfigBuilder.validateConfigFile({}, configPath)).rejects.toThrow("tsdoc.json is out of date");
+		});
+
+		it("should not throw when config matches expected", async () => {
+			const configPath = join(tempDir, "tsdoc.json");
+			const expectedConfig = TsDocConfigBuilder.buildConfigObject();
+			await writeFile(configPath, JSON.stringify(expectedConfig));
+			await expect(TsDocConfigBuilder.validateConfigFile({}, configPath)).resolves.toBeUndefined();
+		});
+
+		it("should validate with custom options", async () => {
+			const options = {
+				groups: ["core" as const],
+				tagDefinitions: [{ tagName: "@custom", syntaxKind: "block" as const }],
+			};
+			const configPath = join(tempDir, "tsdoc.json");
+			const expectedConfig = TsDocConfigBuilder.buildConfigObject(options);
+			await writeFile(configPath, JSON.stringify(expectedConfig));
+			await expect(TsDocConfigBuilder.validateConfigFile(options, configPath)).resolves.toBeUndefined();
+		});
+
+		it("should reject when options differ from on-disk config", async () => {
+			const configPath = join(tempDir, "tsdoc.json");
+			// Write config for all groups
+			const allGroupsConfig = TsDocConfigBuilder.buildConfigObject();
+			await writeFile(configPath, JSON.stringify(allGroupsConfig));
+			// Validate with core-only options (should fail)
+			await expect(TsDocConfigBuilder.validateConfigFile({ groups: ["core"] }, configPath)).rejects.toThrow(
+				"tsdoc.json is out of date",
+			);
+		});
+	});
+
+	describe("writeConfigFile", () => {
+		const tempDir = join(import.meta.dir, "__test_temp__");
+		const originalEnv = { ...process.env };
+
+		beforeEach(async () => {
+			await rm(tempDir, { recursive: true, force: true });
+			await Bun.write(join(tempDir, ".keep"), "");
+			// Ensure not in CI for write tests
+			process.env.CI = undefined;
+			process.env.GITHUB_ACTIONS = undefined;
+		});
+
+		afterEach(async () => {
+			await rm(tempDir, { recursive: true, force: true });
+			process.env = { ...originalEnv };
 		});
 
 		it("should write tsdoc.json file", async () => {
@@ -330,6 +440,50 @@ describe("TsDocConfigBuilder", () => {
 			const content = await readFile(join(tempDir, "tsdoc.json"), "utf-8");
 			const config = JSON.parse(content);
 			expect(config.reportUnsupportedHtmlElements).toBe(false);
+		});
+
+		it("should validate instead of write in CI", async () => {
+			process.env.CI = "true";
+
+			// No file exists - should throw validation error
+			await expect(TsDocConfigBuilder.writeConfigFile({}, tempDir)).rejects.toThrow("tsdoc.json not found");
+		});
+
+		it("should pass validation in CI when file matches", async () => {
+			// Write the expected config first (not in CI)
+			await TsDocConfigBuilder.writeConfigFile({}, tempDir);
+
+			// Now simulate CI - should validate successfully
+			process.env.CI = "true";
+			const configPath = await TsDocConfigBuilder.writeConfigFile({}, tempDir);
+			expect(configPath).toBe(join(tempDir, "tsdoc.json"));
+		});
+
+		it("should throw in CI when config is out of date", async () => {
+			// Write a stale config (not in CI)
+			await writeFile(join(tempDir, "tsdoc.json"), JSON.stringify({ old: "config" }));
+
+			// Now simulate CI - should throw
+			process.env.CI = "true";
+			await expect(TsDocConfigBuilder.writeConfigFile({}, tempDir)).rejects.toThrow("tsdoc.json is out of date");
+		});
+
+		it("should skip CI validation when skipCIValidation is true", async () => {
+			process.env.CI = "true";
+			// Write with skipCIValidation - should write even in CI
+			const configPath = await TsDocConfigBuilder.writeConfigFile({}, tempDir, true);
+			expect(existsSync(configPath)).toBe(true);
+
+			const content = await readFile(configPath, "utf-8");
+			const config = JSON.parse(content);
+			expect(config.$schema).toBeDefined();
+		});
+
+		it("should accept full .json file path", async () => {
+			const customPath = join(tempDir, "custom-tsdoc.json");
+			const configPath = await TsDocConfigBuilder.writeConfigFile({}, customPath);
+			expect(configPath).toBe(customPath);
+			expect(existsSync(customPath)).toBe(true);
 		});
 	});
 });

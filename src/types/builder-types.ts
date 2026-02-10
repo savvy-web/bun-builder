@@ -13,6 +13,50 @@ import type { BunPlugin } from "bun";
 import type { PackageJson } from "./package-json.js";
 
 /**
+ * Configuration for a virtual entry point.
+ *
+ * @remarks
+ * Virtual entries are bundled files that are NOT part of the package's
+ * public exports. They skip declaration generation and are not added to
+ * the exports field of package.json, but ARE included in the files array
+ * for publishing.
+ *
+ * Common use cases include pnpmfile.cjs, CLI shims, or other configuration
+ * files that need bundling but not type generation.
+ *
+ * @example
+ * ```typescript
+ * import type { VirtualEntryConfig } from '@savvy-web/bun-builder';
+ *
+ * const config: VirtualEntryConfig = {
+ *   source: './src/pnpmfile.ts',
+ *   format: 'cjs',
+ * };
+ * ```
+ *
+ * @public
+ */
+export interface VirtualEntryConfig {
+	/**
+	 * Path to the source file to bundle.
+	 *
+	 * @remarks
+	 * Resolved relative to the project root (cwd).
+	 */
+	source: string;
+
+	/**
+	 * Output format for the virtual entry.
+	 *
+	 * @remarks
+	 * Defaults to the builder's format option (or "esm" if not set).
+	 *
+	 * @defaultValue Inherits from builder format option
+	 */
+	format?: "esm" | "cjs";
+}
+
+/**
  * Build target environment for library output.
  *
  * @remarks
@@ -371,6 +415,21 @@ export interface TsDocOptions {
 	 * @defaultValue `"fail"` in CI, `"log"` otherwise
 	 */
 	warnings?: "log" | "fail" | "none";
+
+	/**
+	 * TSDoc lint validation options.
+	 *
+	 * @remarks
+	 * When `true`, uses default lint options. When an object, allows full
+	 * customization. When `false`, disables linting.
+	 *
+	 * Lint shares the parent TSDoc configuration (groups, tagDefinitions, etc.)
+	 * so tag definitions are configured once and used for both linting and
+	 * API Extractor.
+	 *
+	 * @defaultValue `true` when apiModel is enabled
+	 */
+	lint?: TsDocLintOptions | boolean;
 }
 
 /**
@@ -412,7 +471,7 @@ export interface ApiModelOptions {
 	/**
 	 * Whether to enable API model generation.
 	 *
-	 * @defaultValue `false`
+	 * @defaultValue `true`
 	 */
 	enabled?: boolean;
 
@@ -453,6 +512,21 @@ export interface ApiModelOptions {
 	 * used by the package, enabling downstream tools to understand them.
 	 */
 	tsdocMetadata?: TsDocMetadataOptions | boolean;
+
+	/**
+	 * How to handle "forgotten export" messages from API Extractor.
+	 *
+	 * @remarks
+	 * API Extractor reports ae-forgotten-export when a public API references
+	 * a declaration that is not exported. This option controls the behavior:
+	 *
+	 * - `"include"`: Log as warnings (default locally)
+	 * - `"error"`: Throw an error and fail the build (default in CI)
+	 * - `"ignore"`: Suppress silently
+	 *
+	 * @defaultValue `"error"` in CI, `"include"` locally
+	 */
+	forgottenExports?: "include" | "error" | "ignore";
 }
 
 /**
@@ -504,29 +578,32 @@ export type TsDocLintErrorBehavior = "warn" | "error" | "throw";
  * Linting is performed using ESLint with the `eslint-plugin-tsdoc` plugin.
  *
  * @example
- * Enable TSDoc linting with default options:
+ * Enable TSDoc linting via apiModel.tsdoc.lint:
  * ```typescript
  * import { BunLibraryBuilder } from '@savvy-web/bun-builder';
  *
  * export default BunLibraryBuilder.create({
- *   tsdocLint: true,
+ *   apiModel: {
+ *     tsdoc: { lint: true },
+ *   },
  * });
  * ```
  *
  * @example
- * Custom TSDoc lint configuration:
+ * Custom lint configuration:
  * ```typescript
- * import type { TsDocLintOptions } from '@savvy-web/bun-builder';
  * import { BunLibraryBuilder } from '@savvy-web/bun-builder';
  *
- * const lintOptions: TsDocLintOptions = {
- *   enabled: true,
- *   onError: 'warn',
- *   include: ['src/index.ts', 'src/api/utils.ts'],
- * };
- *
  * export default BunLibraryBuilder.create({
- *   tsdocLint: lintOptions,
+ *   apiModel: {
+ *     tsdoc: {
+ *       lint: {
+ *         enabled: true,
+ *         onError: 'warn',
+ *         include: ['src/index.ts'],
+ *       },
+ *     },
+ *   },
  * });
  * ```
  *
@@ -536,17 +613,9 @@ export interface TsDocLintOptions {
 	/**
 	 * Whether to enable TSDoc linting.
 	 *
-	 * @defaultValue `true` when `tsdocLint` option is provided
+	 * @defaultValue `true` when apiModel is enabled
 	 */
 	enabled?: boolean;
-
-	/**
-	 * TSDoc configuration for custom tag definitions.
-	 *
-	 * @remarks
-	 * Configures which TSDoc tags are recognized during validation.
-	 */
-	tsdoc?: TsDocOptions;
 
 	/**
 	 * Override automatic file discovery with explicit patterns.
@@ -567,15 +636,6 @@ export interface TsDocLintOptions {
 	 * @defaultValue `"throw"` in CI, `"error"` locally
 	 */
 	onError?: TsDocLintErrorBehavior;
-
-	/**
-	 * Persist tsdoc.json to disk for tool integration.
-	 *
-	 * @remarks
-	 * When `true`, writes a `tsdoc.json` file that IDEs and other tools
-	 * can use for TSDoc tag completion and validation.
-	 */
-	persistConfig?: boolean | string;
 }
 
 /**
@@ -774,18 +834,42 @@ export interface BunLibraryBuilderOptions {
 	 * When `true`, uses default API model options.
 	 * When an object, allows full customization.
 	 * API models are only generated for the `npm` target.
+	 *
+	 * TSDoc lint is configured via `apiModel.tsdoc.lint`.
 	 */
 	apiModel?: ApiModelOptions | boolean;
 
 	/**
-	 * Options for TSDoc lint validation.
+	 * Virtual entry points that are bundled but not exported.
 	 *
 	 * @remarks
-	 * When `true`, uses default lint options.
-	 * When an object, allows full customization.
-	 * Validation runs before bundling for all targets.
+	 * Virtual entries are files that need bundling but should not generate
+	 * type declarations or appear in package.json exports. They ARE added
+	 * to the files array for publishing.
+	 *
+	 * Keys are output filenames (e.g., "pnpmfile.cjs"), values are config objects.
+	 *
+	 * @example
+	 * ```typescript
+	 * virtualEntries: {
+	 *   'pnpmfile.cjs': { source: './src/pnpmfile.ts', format: 'cjs' },
+	 *   'setup.js': { source: './src/setup.ts' },
+	 * }
+	 * ```
 	 */
-	tsdocLint?: TsDocLintOptions | boolean;
+	virtualEntries?: Record<string, VirtualEntryConfig>;
+
+	/**
+	 * Output module format.
+	 *
+	 * @remarks
+	 * Controls the module format of the bundled output:
+	 * - `"esm"`: ECMAScript modules (default)
+	 * - `"cjs"`: CommonJS modules
+	 *
+	 * @defaultValue `"esm"`
+	 */
+	format?: "esm" | "cjs";
 
 	/**
 	 * Target runtime for Bun.build() bundling.

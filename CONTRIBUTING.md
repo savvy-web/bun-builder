@@ -5,8 +5,7 @@ workflow and standards for this project.
 
 ## Prerequisites
 
-- **Bun** >= 1.3.0
-- **Node.js** >= 20.0.0 (for peer dependencies)
+- **Bun** >= 1.3.6
 - **TypeScript** >= 5.9.0
 
 ## Getting Started
@@ -50,13 +49,23 @@ export default BunLibraryBuilder.create({
     "@microsoft/api-extractor",
     "@typescript/native-preview",
     "typescript",
-    "eslint",
-    "@typescript-eslint/parser",
-    "eslint-plugin-tsdoc",
   ],
-  dtsBundledPackages: ["picocolors", "type-fest"],
-  apiModel: { enabled: true },
-  tsdocLint: { enabled: true, onError: "error" },
+  apiModel: {
+    tsdoc: {
+      lint: {
+        enabled: true,
+        onError: "error",
+      },
+    },
+  },
+  transform({ pkg }) {
+    delete pkg.devDependencies;
+    delete pkg.bundleDependencies;
+    delete pkg.scripts;
+    delete pkg.publishConfig;
+    delete pkg.devEngines;
+    return pkg;
+  },
 });
 ```
 
@@ -79,7 +88,7 @@ bun test --watch
 
 - Maintain high coverage per file
 - Use type-safe mocks from `src/__test__/` utilities
-- Never use `as any` - create proper mock interfaces
+- Never use `as any` -- create proper mock interfaces
 
 #### Writing Tests
 
@@ -136,16 +145,16 @@ bun-builder/
 ├── src/
 │   ├── index.ts                 # Main exports
 │   ├── builders/
-│   │   ├── bun-library-builder.ts      # Main builder class
-│   │   └── bun-library-builder.test.ts
+│   │   └── bun-library-builder.ts      # Main builder class
 │   ├── hooks/
-│   │   ├── build-lifecycle.ts   # Build phase implementations
-│   │   └── api-model-config-resolver.test.ts
+│   │   └── build-lifecycle.ts   # Build phase implementations
 │   ├── plugins/utils/
 │   │   ├── entry-extractor.ts   # Entry point detection
 │   │   ├── catalog-resolver.ts  # Catalog protocol resolution
 │   │   ├── package-json-transformer.ts
 │   │   ├── tsconfig-resolver.ts # TSConfig resolution for virtual envs
+│   │   ├── tsdoc-config-builder.ts  # TSDoc config generation
+│   │   ├── import-graph.ts      # Import graph tracing for TSDoc lint
 │   │   ├── file-utils.ts
 │   │   └── logger.ts
 │   ├── macros/
@@ -168,7 +177,7 @@ bun-builder/
 
 ### TypeScript
 
-- No `any` types - use proper interfaces
+- No `any` types -- use proper interfaces
 - Use `import type` for type-only imports
 - All imports must use `.js` extension (ESM requirement)
 - Add TSDoc comments for all public APIs

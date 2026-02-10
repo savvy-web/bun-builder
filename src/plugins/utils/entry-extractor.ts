@@ -63,6 +63,24 @@ export interface ExtractedEntries {
 	 * ```
 	 */
 	entries: Record<string, string>;
+
+	/**
+	 * Entry name to original export key mapping.
+	 *
+	 * @remarks
+	 * Maps entry names back to the original package.json export path
+	 * (e.g., `"utils"` → `"./utils"`, `"index"` → `"."`).
+	 * Bin entries are not included since they are not exports.
+	 *
+	 * @example
+	 * ```typescript
+	 * {
+	 *   "index": ".",
+	 *   "utils": "./utils"
+	 * }
+	 * ```
+	 */
+	exportPaths: Record<string, string>;
 }
 
 /**
@@ -183,22 +201,28 @@ export class EntryExtractor {
 	 */
 	extract(packageJson: PackageJson): ExtractedEntries {
 		const entries: Record<string, string> = {};
+		const exportPaths: Record<string, string> = {};
 
-		this.extractFromExports(packageJson.exports, entries);
+		this.extractFromExports(packageJson.exports, entries, exportPaths);
 		this.extractFromBin(packageJson.bin, entries);
 
-		return { entries };
+		return { entries, exportPaths };
 	}
 
 	/**
 	 * Extracts entries from the exports field.
 	 */
-	private extractFromExports(exports: PackageJson["exports"], entries: Record<string, string>): void {
+	private extractFromExports(
+		exports: PackageJson["exports"],
+		entries: Record<string, string>,
+		exportPaths: Record<string, string>,
+	): void {
 		if (!exports) return;
 
 		if (typeof exports === "string") {
 			if (this.isTypeScriptFile(exports)) {
 				entries.index = exports;
+				exportPaths.index = ".";
 			}
 			return;
 		}
@@ -219,6 +243,7 @@ export class EntryExtractor {
 
 			const entryName = this.createEntryName(key);
 			entries[entryName] = resolvedPath;
+			exportPaths[entryName] = key;
 		}
 	}
 

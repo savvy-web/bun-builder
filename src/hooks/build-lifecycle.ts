@@ -38,7 +38,6 @@ import type {
 	BuildTarget,
 	BunLibraryBuilderOptions,
 	CopyPatternConfig,
-	TsDocLintOptions,
 	TsDocOptions,
 } from "../types/builder-types.js";
 import type { PackageJson } from "../types/package-json.js";
@@ -156,7 +155,7 @@ export class ApiModelConfigResolver {
 		const userLocalPaths = typeof apiModel === "object" && apiModel !== null ? (apiModel.localPaths ?? []) : [];
 		const localPaths = ApiModelConfigResolver.resolveLocalPaths(userLocalPaths);
 
-		if (apiModel === undefined || apiModel === false) {
+		if (apiModel === false) {
 			return {
 				enabled: false,
 				filename: `${unscopedPackageName}.api.json`,
@@ -167,7 +166,7 @@ export class ApiModelConfigResolver {
 			};
 		}
 
-		if (apiModel === true) {
+		if (apiModel === undefined || apiModel === true) {
 			return {
 				enabled: true,
 				filename: `${unscopedPackageName}.api.json`,
@@ -343,6 +342,16 @@ export interface BuildContext {
 	entries: Record<string, string>;
 
 	/**
+	 * Entry name to original export key mapping.
+	 *
+	 * @remarks
+	 * Maps entry names back to the original package.json export path
+	 * (e.g., `"utils"` → `"./utils"`, `"index"` → `"."`).
+	 * Bin entries are not included.
+	 */
+	exportPaths: Record<string, string>;
+
+	/**
 	 * Package version from package.json.
 	 */
 	version: string;
@@ -437,6 +446,18 @@ function formatLintResults(results: LintResult, cwd: string): string {
 }
 
 /**
+ * Internal lint options combining TsDocLintOptions with shared tsdoc config.
+ *
+ * @internal
+ */
+interface ResolvedLintOptions {
+	enabled?: boolean;
+	include?: string[];
+	onError?: "warn" | "error" | "throw";
+	tsdoc?: TsDocOptions;
+}
+
+/**
  * Runs TSDoc lint validation before the build.
  *
  * @remarks
@@ -448,12 +469,12 @@ function formatLintResults(results: LintResult, cwd: string): string {
  * be persisted to the project root for IDE integration.
  *
  * @param context - The build context
- * @param options - TSDoc lint configuration options
+ * @param options - Resolved lint configuration options
  * @throws When `onError` is `"throw"` and validation errors are found
  *
  * @internal
  */
-export async function runTsDocLint(context: BuildContext, options: TsDocLintOptions): Promise<void> {
+export async function runTsDocLint(context: BuildContext, options: ResolvedLintOptions): Promise<void> {
 	const logger = BuildLogger.createLogger("tsdoc-lint");
 
 	if (options.enabled === false) {
@@ -464,7 +485,7 @@ export async function runTsDocLint(context: BuildContext, options: TsDocLintOpti
 
 	// Generate tsdoc.json config file
 	const tsdocOptions = options.tsdoc ?? {};
-	const persistConfig = options.persistConfig;
+	const persistConfig = tsdocOptions.persistConfig;
 	const shouldPersist = TsDocConfigBuilder.shouldPersist(persistConfig);
 	const tsdocConfigOutputPath = TsDocConfigBuilder.getConfigPath(persistConfig, context.cwd);
 
@@ -646,7 +667,7 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 			entrypoints,
 			outdir: context.outdir,
 			target: context.options.bunTarget ?? "bun",
-			format: "esm",
+			format: context.options.format ?? "esm",
 			splitting: false,
 			sourcemap: context.target === "dev" ? "linked" : "none",
 			minify: false,
@@ -920,12 +941,137 @@ async function copyUnbundledDeclarations(context: BuildContext, tempDtsDir: stri
 }
 
 /**
- * Bundles declarations with API Extractor.
+ * Resolves a declaration file path from a source entry path.
+ *
+ * @param sourcePath - The TypeScript source file path (e.g., "./src/index.ts")
+ * @param tempDtsDir - The temporary directory containing generated .d.ts files
+ * @returns The resolved path if found, otherwise undefined
+ *
+ * @internal
+ */
+function resolveDtsPath(sourcePath: string, tempDtsDir: string): string | undefined {
+	const normalizedPath = sourcePath.replace(/^\.\//, "").replace(/\.tsx?$/, ".d.ts");
+	let tempDtsPath = join(tempDtsDir, normalizedPath);
+
+	// If source was in src/, check both with and without src/ prefix
+	if (!existsSync(tempDtsPath) && normalizedPath.startsWith("src/")) {
+		const withoutSrc = normalizedPath.replace(/^src\//, "");
+		const altPath = join(tempDtsDir, withoutSrc);
+		if (existsSync(altPath)) {
+			tempDtsPath = altPath;
+		}
+	}
+
+	return existsSync(tempDtsPath) ? tempDtsPath : undefined;
+}
+
+/**
+ * Merges per-entry API models into a single Package with multiple EntryPoint members.
  *
  * @remarks
- * Uses the API Extractor programmatic API to bundle all declaration files
- * into a single `index.d.ts`. This produces cleaner output for consumers
- * and can also generate an API model JSON file for documentation tools.
+ * Each per-entry API model is a Package whose `members` array contains a single
+ * EntryPoint. This function extracts the EntryPoints, rewrites canonical references
+ * for sub-entries, and combines them into a single Package with all EntryPoints.
+ *
+ * @param options - Merge options
+ * @returns Merged API model with multiple EntryPoint members
+ *
+ * @internal
+ */
+export function mergeApiModels(options: {
+	perEntryModels: Map<string, Record<string, unknown>>;
+	packageName: string;
+	exportPaths: Record<string, string>;
+}): Record<string, unknown> {
+	const { perEntryModels, packageName, exportPaths } = options;
+
+	if (perEntryModels.size === 0) {
+		throw new Error("Cannot merge zero API models");
+	}
+
+	// Use the first model as the base (deep clone)
+	const firstModel = perEntryModels.values().next().value as Record<string, unknown>;
+	const merged = JSON.parse(JSON.stringify(firstModel)) as Record<string, unknown>;
+
+	// Collect all EntryPoint members from each per-entry model
+	const entryPointMembers: unknown[] = [];
+
+	for (const [entryName, model] of perEntryModels) {
+		const entryPoints = model.members as unknown[];
+		if (!entryPoints || entryPoints.length === 0) continue;
+
+		// Each per-entry model has one EntryPoint in Package.members
+		const entryPoint = JSON.parse(JSON.stringify(entryPoints[0])) as Record<string, unknown>;
+
+		// Determine the export path for this entry
+		const exportPath = exportPaths[entryName] ?? (entryName === "index" ? "." : `./${entryName}`);
+		const isMainEntry = exportPath === ".";
+
+		if (isMainEntry) {
+			// Main entry: keep canonical reference as @scope/package!, name ""
+			entryPointMembers.unshift(entryPoint);
+		} else {
+			// Sub-entry: rewrite canonical reference to @scope/package/subpath!
+			const subpath = exportPath.replace(/^\.\//, "");
+			const originalPrefix = `${packageName}!`;
+			const newPrefix = `${packageName}/${subpath}!`;
+
+			entryPoint.canonicalReference = newPrefix;
+			entryPoint.name = subpath;
+
+			// Rewrite all canonical references within the entry point's member tree
+			rewriteCanonicalReferences(entryPoint, originalPrefix, newPrefix);
+
+			entryPointMembers.push(entryPoint);
+		}
+	}
+
+	// Replace the Package's members with all EntryPoints
+	merged.members = entryPointMembers;
+
+	return merged;
+}
+
+/**
+ * Recursively rewrites canonical reference strings within an API model member tree.
+ *
+ * @internal
+ */
+function rewriteCanonicalReferences(node: unknown, originalPrefix: string, newPrefix: string): void {
+	if (!node || typeof node !== "object") return;
+
+	if (Array.isArray(node)) {
+		for (const item of node) {
+			rewriteCanonicalReferences(item, originalPrefix, newPrefix);
+		}
+		return;
+	}
+
+	const obj = node as Record<string, unknown>;
+
+	// Rewrite canonicalReference on members (but not on the EntryPoint itself — already handled)
+	if (typeof obj.canonicalReference === "string" && obj.kind !== "EntryPoint") {
+		const ref = obj.canonicalReference as string;
+		if (ref.startsWith(originalPrefix)) {
+			obj.canonicalReference = ref.replace(originalPrefix, newPrefix);
+		}
+	}
+
+	// Recurse into members array
+	if (Array.isArray(obj.members)) {
+		for (const member of obj.members) {
+			rewriteCanonicalReferences(member, originalPrefix, newPrefix);
+		}
+	}
+}
+
+/**
+ * Bundles declarations with API Extractor for all entry points.
+ *
+ * @remarks
+ * Runs API Extractor per entry point to produce per-entry bundled `.d.ts` files.
+ * When API model generation is enabled, per-entry models are merged into a single
+ * model with multiple EntryPoint members and rewritten canonical references.
  *
  * If API Extractor is not installed or fails, falls back to copying
  * unbundled declarations via {@link copyUnbundledDeclarations}.
@@ -933,8 +1079,7 @@ async function copyUnbundledDeclarations(context: BuildContext, tempDtsDir: stri
  * @param context - The build context
  * @param tempDtsDir - Directory containing generated declaration files
  * @param apiModel - API model generation options (only for npm target)
- * @returns Object containing paths to bundled declaration and API model,
- *          or array of unbundled declaration files if bundling failed
+ * @returns Object containing paths to bundled declarations, API model, etc.
  *
  * @internal
  */
@@ -943,7 +1088,7 @@ export async function runApiExtractor(
 	tempDtsDir: string,
 	apiModel?: ApiModelOptions | boolean,
 ): Promise<{
-	bundledDtsPath?: string;
+	bundledDtsPaths?: string[];
 	apiModelPath?: string;
 	tsdocMetadataPath?: string;
 	tsconfigPath?: string;
@@ -962,127 +1107,195 @@ export async function runApiExtractor(
 		return { dtsFiles };
 	}
 
-	// Find the main entry point declaration
-	const mainEntryPath = Object.values(context.entries)[0];
-	if (!mainEntryPath) {
-		logger.warn("No entry points found for API Extractor");
+	// Filter entries to only export entries (skip bin entries)
+	const exportEntries = Object.entries(context.entries).filter(([name]) => !name.startsWith("bin/"));
+	if (exportEntries.length === 0) {
+		logger.warn("No export entry points found for API Extractor");
 		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
 		return { dtsFiles };
 	}
-
-	// Convert entry source path to declaration path
-	const normalizedPath = mainEntryPath.replace(/^\.\//, "").replace(/\.tsx?$/, ".d.ts");
-	let tempDtsPath = join(tempDtsDir, normalizedPath);
-
-	// If source was in src/, check both with and without src/ prefix
-	if (!existsSync(tempDtsPath) && normalizedPath.startsWith("src/")) {
-		const withoutSrc = normalizedPath.replace(/^src\//, "");
-		const altPath = join(tempDtsDir, withoutSrc);
-		if (existsSync(altPath)) {
-			tempDtsPath = altPath;
-		}
-	}
-
-	if (!existsSync(tempDtsPath)) {
-		logger.error(`Declaration file not found: ${tempDtsPath}`);
-		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
-		return { dtsFiles };
-	}
-
-	// Output path for bundled .d.ts
-	const bundledDtsPath = join(context.outdir, "index.d.ts");
 
 	// Resolve API model configuration using the centralized resolver
 	const unscopedName = FileSystemUtils.getUnscopedPackageName(context.packageJson.name ?? "package");
 	const apiModelConfig = ApiModelConfigResolver.resolve(apiModel, unscopedName);
 
-	const apiModelPath = apiModelConfig.enabled ? join(context.outdir, apiModelConfig.filename) : undefined;
-	const tsdocMetadataPath = apiModelConfig.tsdocMetadataEnabled
-		? join(context.outdir, apiModelConfig.tsdocMetadataFilename)
-		: undefined;
+	// Resolve forgottenExports behavior
+	const forgottenExportsOption =
+		(typeof apiModel === "object" && apiModel !== null ? apiModel.forgottenExports : undefined) ??
+		(BuildLogger.isCI() ? "error" : "include");
 
 	// Ensure output directory exists
-	await mkdir(dirname(bundledDtsPath), { recursive: true });
+	await mkdir(context.outdir, { recursive: true });
 
 	try {
 		// Import API Extractor dynamically
 		const { Extractor, ExtractorConfig } = await import("@microsoft/api-extractor");
 
-		// Prepare the extractor configuration
-		const extractorConfig = ExtractorConfig.prepare({
-			configObject: {
-				projectFolder: context.cwd,
-				mainEntryPointFilePath: tempDtsPath,
-				compiler: {
-					tsconfigFilePath: context.options.tsconfigPath ?? join(context.cwd, "tsconfig.json"),
+		const bundledDtsPaths: string[] = [];
+		const perEntryModels = new Map<string, Record<string, unknown>>();
+		let lastTsdocMetadataPath: string | undefined;
+		const collectedForgottenExports: { text: string; entryName: string }[] = [];
+
+		// Run API Extractor per entry
+		for (const [entryName, sourcePath] of exportEntries) {
+			const tempDtsPath = resolveDtsPath(sourcePath, tempDtsDir);
+			if (!tempDtsPath) {
+				logger.warn(`Declaration file not found for entry "${entryName}", skipping`);
+				continue;
+			}
+
+			// Determine output filename: "index" -> "index.d.ts", "utils" -> "utils.d.ts"
+			const dtsFilename = `${entryName}.d.ts`;
+			const bundledDtsPath = join(context.outdir, dtsFilename);
+			await mkdir(dirname(bundledDtsPath), { recursive: true });
+
+			// For API model, write per-entry JSON to a temp location
+			const perEntryApiModelPath = apiModelConfig.enabled
+				? join(context.outdir, `.tmp-${entryName.replace(/\//g, "-")}.api.json`)
+				: undefined;
+
+			const tsdocMetadataPath = apiModelConfig.tsdocMetadataEnabled
+				? join(context.outdir, apiModelConfig.tsdocMetadataFilename)
+				: undefined;
+
+			const extractorConfig = ExtractorConfig.prepare({
+				configObject: {
+					projectFolder: context.cwd,
+					mainEntryPointFilePath: tempDtsPath,
+					compiler: {
+						tsconfigFilePath: context.options.tsconfigPath ?? join(context.cwd, "tsconfig.json"),
+					},
+					dtsRollup: {
+						enabled: true,
+						untrimmedFilePath: bundledDtsPath,
+					},
+					docModel: perEntryApiModelPath
+						? {
+								enabled: true,
+								apiJsonFilePath: perEntryApiModelPath,
+							}
+						: { enabled: false },
+					tsdocMetadata: tsdocMetadataPath
+						? {
+								enabled: true,
+								tsdocMetadataFilePath: tsdocMetadataPath,
+							}
+						: { enabled: false },
+					apiReport: {
+						enabled: false,
+					},
+					bundledPackages: context.options.dtsBundledPackages ?? [],
 				},
-				dtsRollup: {
-					enabled: true,
-					untrimmedFilePath: bundledDtsPath,
+				packageJsonFullPath: join(context.cwd, "package.json"),
+				configObjectFullPath: undefined,
+			});
+
+			const extractorResult = Extractor.invoke(extractorConfig, {
+				localBuild: true,
+				showVerboseMessages: false,
+				messageCallback: (message: { text?: string; logLevel?: string; messageId?: string }) => {
+					// Suppress TypeScript version mismatch warnings
+					if (
+						message.text?.includes("Analysis will use the bundled TypeScript version") ||
+						message.text?.includes("The target project appears to use TypeScript")
+					) {
+						message.logLevel = "none";
+						return;
+					}
+
+					// Suppress API signature change warnings
+					if (message.text?.includes("You have changed the public API signature")) {
+						message.logLevel = "none";
+						return;
+					}
+
+					// Suppress TSDoc warnings (they can be noisy)
+					if (message.messageId?.startsWith("tsdoc-")) {
+						message.logLevel = "none";
+						return;
+					}
+
+					// Handle forgotten export messages
+					if (message.messageId === "ae-forgotten-export" && message.text) {
+						collectedForgottenExports.push({ text: message.text, entryName });
+						message.logLevel = "none";
+						return;
+					}
 				},
-				docModel: apiModelConfig.enabled
-					? {
-							enabled: true,
-							apiJsonFilePath: apiModelPath,
-						}
-					: { enabled: false },
-				tsdocMetadata: apiModelConfig.tsdocMetadataEnabled
-					? {
-							enabled: true,
-							tsdocMetadataFilePath: tsdocMetadataPath,
-						}
-					: { enabled: false },
-				apiReport: {
-					enabled: false,
-				},
-				bundledPackages: context.options.dtsBundledPackages ?? [],
-			},
-			packageJsonFullPath: join(context.cwd, "package.json"),
-			configObjectFullPath: undefined,
-		});
+			});
 
-		// Run API Extractor
-		const extractorResult = Extractor.invoke(extractorConfig, {
-			localBuild: true,
-			showVerboseMessages: false,
-			messageCallback: (message: { text?: string; logLevel?: string; messageId?: string }) => {
-				// Suppress TypeScript version mismatch warnings
-				if (
-					message.text?.includes("Analysis will use the bundled TypeScript version") ||
-					message.text?.includes("The target project appears to use TypeScript")
-				) {
-					message.logLevel = "none";
-					return;
-				}
+			if (!extractorResult.succeeded) {
+				logger.warn(`API Extractor failed for entry "${entryName}", skipping`);
+				continue;
+			}
 
-				// Suppress API signature change warnings
-				if (message.text?.includes("You have changed the public API signature")) {
-					message.logLevel = "none";
-					return;
-				}
+			bundledDtsPaths.push(bundledDtsPath);
 
-				// Suppress TSDoc warnings (they can be noisy)
-				if (message.messageId?.startsWith("tsdoc-")) {
-					message.logLevel = "none";
-					return;
-				}
-			},
-		});
+			if (tsdocMetadataPath && existsSync(tsdocMetadataPath)) {
+				lastTsdocMetadataPath = tsdocMetadataPath;
+			}
 
-		if (!extractorResult.succeeded) {
-			logger.warn("API Extractor failed, copying unbundled declarations");
+			// Read per-entry API model for merging
+			if (perEntryApiModelPath && existsSync(perEntryApiModelPath)) {
+				const modelContent = await readFile(perEntryApiModelPath, "utf-8");
+				perEntryModels.set(entryName, JSON.parse(modelContent) as Record<string, unknown>);
+			}
+		}
+
+		if (bundledDtsPaths.length === 0) {
+			logger.warn("API Extractor failed for all entries, copying unbundled declarations");
 			const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
 			return { dtsFiles };
 		}
 
-		logger.info(`Emitted 1 bundled declaration file in ${BuildLogger.formatTime(timer.elapsed())}`);
+		// Process collected forgotten export messages
+		if (collectedForgottenExports.length > 0) {
+			const messages = collectedForgottenExports.map((m) => `  [${m.entryName}] ${m.text}`).join("\n");
 
-		if (apiModelPath) {
-			logger.success(`Emitted API model: ${basename(apiModelPath)} (excluded from npm publish)`);
+			if (forgottenExportsOption === "error") {
+				throw new Error(`Forgotten exports detected:\n${messages}`);
+			}
+			if (forgottenExportsOption === "include") {
+				logger.warn(`Forgotten exports detected:\n${messages}`);
+			}
+			// "ignore": do nothing
 		}
 
-		if (tsdocMetadataPath && existsSync(tsdocMetadataPath)) {
-			logger.success(`Emitted TSDoc metadata: ${basename(tsdocMetadataPath)}`);
+		logger.info(
+			`Emitted ${bundledDtsPaths.length} bundled declaration file(s) in ${BuildLogger.formatTime(timer.elapsed())}`,
+		);
+
+		// Merge per-entry API models if there are multiple entries
+		let apiModelPath: string | undefined;
+		if (apiModelConfig.enabled && perEntryModels.size > 0) {
+			apiModelPath = join(context.outdir, apiModelConfig.filename);
+			const packageName = context.packageJson.name ?? "package";
+
+			if (perEntryModels.size === 1) {
+				// Single entry: write directly
+				const [, model] = perEntryModels.entries().next().value as [string, Record<string, unknown>];
+				await writeFile(apiModelPath, `${JSON.stringify(model, null, "\t")}\n`);
+			} else {
+				// Multiple entries: merge
+				const merged = mergeApiModels({
+					perEntryModels,
+					packageName,
+					exportPaths: context.exportPaths,
+				});
+				await writeFile(apiModelPath, `${JSON.stringify(merged, null, "\t")}\n`);
+			}
+
+			logger.success(`Emitted API model: ${basename(apiModelPath)} (excluded from npm publish)`);
+
+			// Clean up temp per-entry API model files
+			for (const [entryName] of perEntryModels) {
+				const tempPath = join(context.outdir, `.tmp-${entryName.replace(/\//g, "-")}.api.json`);
+				await rm(tempPath, { force: true }).catch(() => {});
+			}
+		}
+
+		if (lastTsdocMetadataPath && existsSync(lastTsdocMetadataPath)) {
+			logger.success(`Emitted TSDoc metadata: ${basename(lastTsdocMetadataPath)}`);
 		}
 
 		// Generate resolved tsconfig.json for virtual TypeScript environments
@@ -1122,7 +1335,13 @@ export async function runApiExtractor(
 			}
 		}
 
-		return { bundledDtsPath, apiModelPath, tsdocMetadataPath, tsconfigPath, tsdocConfigPath };
+		return {
+			bundledDtsPaths,
+			apiModelPath,
+			tsdocMetadataPath: lastTsdocMetadataPath,
+			tsconfigPath,
+			tsdocConfigPath,
+		};
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		logger.warn(`API Extractor error: ${errorMessage}, copying unbundled declarations`);
@@ -1162,6 +1381,7 @@ export async function writePackageJson(context: BuildContext, filesArray: Set<st
 		isProduction,
 		processTSExports: true,
 		bundle: true,
+		format: context.options.format,
 		transform: transformFn,
 	});
 
@@ -1432,7 +1652,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 	const extractor = new EntryExtractor({
 		exportsAsIndexes: options.exportsAsIndexes,
 	});
-	const { entries } = extractor.extract(packageJson);
+	const { entries, exportPaths } = extractor.extract(packageJson);
 
 	if (Object.keys(entries).length === 0) {
 		logger.error("No entry points found in package.json");
@@ -1459,6 +1679,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 		options,
 		outdir,
 		entries,
+		exportPaths,
 		version,
 		packageJson,
 	};
@@ -1479,9 +1700,23 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 	await mkdir(outdir, { recursive: true });
 
 	// Phase 1: Pre-build (TSDoc lint)
-	if (options.tsdocLint) {
-		const lintOptions = options.tsdocLint === true ? {} : options.tsdocLint;
-		await runTsDocLint(context, lintOptions);
+	// Lint is resolved from apiModel.tsdoc.lint (shared tsdoc config)
+	const apiModelOption = options.apiModel;
+	const apiModelObj = typeof apiModelOption === "object" && apiModelOption !== null ? apiModelOption : {};
+	const tsdocConfig = apiModelObj.tsdoc;
+	const lintConfig = tsdocConfig?.lint;
+
+	// Lint is enabled if apiModel is not false and lint is not false
+	const lintEnabled = apiModelOption !== false && lintConfig !== false;
+
+	if (lintEnabled && lintConfig !== undefined) {
+		// Extract shared tsdoc config (without lint) and merge with lint-specific options
+		const { lint: _lint, ...sharedTsdoc } = tsdocConfig ?? {};
+		const lintOptions = typeof lintConfig === "object" ? lintConfig : {};
+		await runTsDocLint(context, {
+			...lintOptions,
+			tsdoc: Object.keys(sharedTsdoc).length > 0 ? sharedTsdoc : undefined,
+		});
 	}
 
 	// Phase 2: Bundle with Bun.build()
@@ -1519,14 +1754,16 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 		logger.warn("Declaration generation failed, continuing without .d.ts files");
 	} else {
 		// Phase 4: Bundle declarations with API Extractor
-		const { bundledDtsPath, apiModelPath, tsconfigPath, tsdocConfigPath, dtsFiles } = await runApiExtractor(
+		const { bundledDtsPaths, apiModelPath, tsconfigPath, tsdocConfigPath, dtsFiles } = await runApiExtractor(
 			context,
 			tempDtsDir,
 			target === "npm" ? options.apiModel : undefined,
 		);
 
-		if (bundledDtsPath) {
-			filesArray.add("index.d.ts");
+		if (bundledDtsPaths) {
+			for (const dtsPath of bundledDtsPaths) {
+				filesArray.add(relative(outdir, dtsPath));
+			}
 		}
 
 		// If API Extractor failed and we fell back to copying unbundled declarations
@@ -1551,15 +1788,10 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 			filesArray.add("!tsdoc.json");
 		}
 
-		// Persist tsdoc.json to project root for IDE support (if configured and not already done by linting)
-		// Only persist if tsdocLint is disabled or didn't persist (to avoid duplicate writes)
-		const tsdocLintDidPersist =
-			options.tsdocLint &&
-			TsDocConfigBuilder.shouldPersist(
-				typeof options.tsdocLint === "object" ? options.tsdocLint.persistConfig : undefined,
-			);
-
-		if (target === "npm" && !tsdocLintDidPersist) {
+		// Persist tsdoc.json to project root for IDE support
+		// Uses the shared tsdoc config from apiModel.tsdoc (which also drives lint)
+		// Only persist if lint didn't already persist (to avoid duplicate writes)
+		if (target === "npm" && !lintEnabled) {
 			const unscopedName = FileSystemUtils.getUnscopedPackageName(packageJson.name ?? "package");
 			const apiModelConfig = ApiModelConfigResolver.resolve(options.apiModel, unscopedName);
 			const tsdocOptions = apiModelConfig.tsdoc ?? {};
@@ -1615,11 +1847,109 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 		});
 	}
 
-	// Phase 7: Write package.json
+	// Phase 7: Virtual entries
+	const virtualEntries = options.virtualEntries ?? {};
+	if (Object.keys(virtualEntries).length > 0) {
+		const virtualLogger = BuildLogger.createEnvLogger(target);
+		const virtualTimer = BuildLogger.createTimer();
+
+		// Group virtual entries by format
+		const byFormat = new Map<string, Map<string, string>>();
+		for (const [outputName, config] of Object.entries(virtualEntries)) {
+			const entryFormat = config.format ?? "esm";
+			let formatMap = byFormat.get(entryFormat);
+			if (!formatMap) {
+				formatMap = new Map();
+				byFormat.set(entryFormat, formatMap);
+			}
+			// Strip extension from output name to get entry name
+			const entryName = outputName.replace(/\.(c|m)?js$/, "");
+			formatMap.set(entryName, config.source);
+		}
+
+		// Build each format group
+		for (const [format, entries] of byFormat) {
+			const entrypoints = [...entries.values()].map((entry) => (entry.startsWith("./") ? join(cwd, entry) : entry));
+
+			const external: string[] = [];
+			if (options.externals) {
+				for (const ext of options.externals) {
+					if (typeof ext === "string") {
+						external.push(ext);
+					} else if (ext instanceof RegExp) {
+						external.push(ext.source);
+					}
+				}
+			}
+
+			const virtualResult = await Bun.build({
+				entrypoints,
+				outdir,
+				target: options.bunTarget ?? "bun",
+				format: format as "esm" | "cjs",
+				splitting: false,
+				sourcemap: "none",
+				minify: false,
+				external,
+				packages: "external",
+				naming: "[dir]/[name].[ext]",
+			});
+
+			if (!virtualResult.success) {
+				virtualLogger.error(`Virtual entry build failed (${format}):`);
+				for (const log of virtualResult.logs) {
+					virtualLogger.error(`  ${String(log)}`);
+				}
+				continue;
+			}
+
+			// Rename outputs to match virtual entry names and add to filesArray
+			for (const output of virtualResult.outputs) {
+				const outputRelative = relative(outdir, output.path);
+				const outputBase = outputRelative.replace(/\.(c|m)?js$/, "");
+
+				// Find matching entry name
+				for (const [entryName, source] of entries) {
+					const normalizedSource = source.replace(/^\.\//, "").replace(/\.tsx?$/, "");
+					const variants = [
+						normalizedSource,
+						normalizedSource.replace(/^src\//, ""),
+						normalizedSource.replace(/\/index$/, ""),
+						normalizedSource.replace(/^src\//, "").replace(/\/index$/, ""),
+					].filter((v) => v.length > 0);
+
+					const isMatch = variants.some((v) => v === outputBase || outputRelative.replace(/\.(c|m)?js$/, "") === v);
+
+					if (isMatch) {
+						// Find the original output name for this entry
+						const originalOutputName = Object.keys(virtualEntries).find((name) => {
+							const stripped = name.replace(/\.(c|m)?js$/, "");
+							return stripped === entryName;
+						});
+
+						if (originalOutputName && originalOutputName !== outputRelative) {
+							const newPath = join(outdir, originalOutputName);
+							await mkdir(dirname(newPath), { recursive: true });
+							const { rename } = await import("node:fs/promises");
+							await rename(output.path, newPath);
+							filesArray.add(originalOutputName);
+						} else {
+							filesArray.add(outputRelative);
+						}
+						break;
+					}
+				}
+			}
+		}
+
+		virtualLogger.info(`Built virtual entries in ${BuildLogger.formatTime(virtualTimer.elapsed())}`);
+	}
+
+	// Phase 8: Write package.json
 	await writePackageJson(context, filesArray);
 	filesArray.add("package.json");
 
-	// Phase 8: Copy API artifacts to local paths (npm target only, skip in CI)
+	// Phase 9: Copy API artifacts to local paths (npm target only, skip in CI)
 	// This enables documentation workflows where API models need to be available
 	// in directories outside the standard build output.
 	if (target === "npm" && !BuildLogger.isCI()) {

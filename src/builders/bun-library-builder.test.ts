@@ -32,7 +32,6 @@ describe("BunLibraryBuilder", () => {
 				exportsAsIndexes: true,
 				copyPatterns: ["README.md"],
 				define: { __VERSION__: '"1.0.0"' },
-				tsdocLint: true,
 				apiModel: true,
 			});
 
@@ -83,20 +82,28 @@ describe("BunLibraryBuilder options", () => {
 		expect(builder).toBeInstanceOf(BunLibraryBuilder);
 	});
 
-	test("tsdocLint accepts boolean", () => {
-		const builderTrue = new BunLibraryBuilder({ tsdocLint: true });
-		const builderFalse = new BunLibraryBuilder({ tsdocLint: false });
+	test("apiModel.tsdoc.lint accepts boolean", () => {
+		const builderTrue = new BunLibraryBuilder({
+			apiModel: { tsdoc: { lint: true } },
+		});
+		const builderFalse = new BunLibraryBuilder({
+			apiModel: { tsdoc: { lint: false } },
+		});
 
 		expect(builderTrue).toBeInstanceOf(BunLibraryBuilder);
 		expect(builderFalse).toBeInstanceOf(BunLibraryBuilder);
 	});
 
-	test("tsdocLint accepts options object", () => {
+	test("apiModel.tsdoc.lint accepts options object", () => {
 		const builder = new BunLibraryBuilder({
-			tsdocLint: {
-				enabled: true,
-				onError: "warn",
-				include: ["src/index.ts"],
+			apiModel: {
+				tsdoc: {
+					lint: {
+						enabled: true,
+						onError: "warn",
+						include: ["src/index.ts"],
+					},
+				},
 			},
 		});
 
@@ -137,6 +144,17 @@ describe("BunLibraryBuilder options", () => {
 				{ from: "./assets", to: "./assets" },
 				{ from: ".npmrc", noErrorOnMissing: true },
 			],
+		});
+
+		expect(builder).toBeInstanceOf(BunLibraryBuilder);
+	});
+
+	test("virtualEntries accepts config objects", () => {
+		const builder = new BunLibraryBuilder({
+			virtualEntries: {
+				"pnpmfile.cjs": { source: "./src/pnpmfile.ts", format: "cjs" },
+				"setup.js": { source: "./src/setup.ts" },
+			},
 		});
 
 		expect(builder).toBeInstanceOf(BunLibraryBuilder);

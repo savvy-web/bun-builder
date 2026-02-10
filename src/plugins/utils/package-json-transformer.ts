@@ -310,6 +310,7 @@ export class PackageJsonTransformer {
 		originalPackageJson: PackageJson,
 		processTSExports: boolean = true,
 		bundle?: boolean,
+		format?: "esm" | "cjs",
 	): PackageJson {
 		const { publishConfig, scripts, ...rest } = packageJson;
 
@@ -321,6 +322,7 @@ export class PackageJsonTransformer {
 		const processedManifest = {
 			...rest,
 			private: isPrivate,
+			type: format === "cjs" ? "commonjs" : "module",
 		} as PackageJson;
 
 		if (processedManifest.exports) {
@@ -435,18 +437,31 @@ export class PackageJsonTransformer {
 			isProduction?: boolean;
 			processTSExports?: boolean;
 			bundle?: boolean;
+			format?: "esm" | "cjs";
 			transform?: (pkg: PackageJson) => PackageJson;
 		} = {},
 	): Promise<PackageJson> {
-		const { isProduction = false, processTSExports = true, bundle, transform } = options;
+		const { isProduction = false, processTSExports = true, bundle, format, transform } = options;
 
 		let result: PackageJson;
 
 		if (isProduction) {
 			const resolved = await PackageJsonTransformer.resolveCatalogReferences(packageJson);
-			result = PackageJsonTransformer.applyBuildTransformations(resolved, packageJson, processTSExports, bundle);
+			result = PackageJsonTransformer.applyBuildTransformations(
+				resolved,
+				packageJson,
+				processTSExports,
+				bundle,
+				format,
+			);
 		} else {
-			result = PackageJsonTransformer.applyBuildTransformations(packageJson, packageJson, processTSExports, bundle);
+			result = PackageJsonTransformer.applyBuildTransformations(
+				packageJson,
+				packageJson,
+				processTSExports,
+				bundle,
+				format,
+			);
 		}
 
 		if (transform) {
