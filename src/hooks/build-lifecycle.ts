@@ -22,7 +22,7 @@
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename as renameFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
 import type { BuildArtifact } from "bun";
 import { EntryExtractor } from "../plugins/utils/entry-extractor.js";
@@ -908,7 +908,6 @@ export async function runBundlessBuild(context: BuildContext): Promise<{ outputs
 
 	// Post-process: strip src/ prefix from output paths to match the pattern utils/helper.js
 	const renamedOutputs: BuildArtifact[] = [];
-	const { rename: renameFile } = await import("node:fs/promises");
 
 	for (const output of result.outputs) {
 		const relativePath = relative(context.outdir, output.path);
@@ -925,12 +924,11 @@ export async function runBundlessBuild(context: BuildContext): Promise<{ outputs
 		}
 	}
 
-	// Clean up empty src/ directory after renaming
-	const { rmdir } = await import("node:fs/promises");
+	// Clean up src/ subtree after renaming
 	try {
-		await rmdir(join(context.outdir, "src"));
+		await rm(join(context.outdir, "src"), { recursive: true, force: true });
 	} catch {
-		// Directory not empty or doesn't exist, ignore
+		// Directory doesn't exist, ignore
 	}
 
 	logger.info(`Compiled ${renamedOutputs.length} file(s) in ${BuildLogger.formatTime(timer.elapsed())}`);
@@ -1191,6 +1189,19 @@ function rewriteCanonicalReferences(node: unknown, originalPrefix: string, newPr
 }
 
 /**
+ * Warning message with optional source location info.
+ *
+ * @internal
+ */
+interface WarningWithLocation {
+	text: string;
+	entryName: string;
+	sourceFilePath: string | undefined;
+	sourceFileLine: number | undefined;
+	sourceFileColumn: number | undefined;
+}
+
+/**
  * Formats a warning message with source location info for consistent output.
  *
  * @param warning - The warning object with text and optional source location
@@ -1199,16 +1210,7 @@ function rewriteCanonicalReferences(node: unknown, originalPrefix: string, newPr
  *
  * @internal
  */
-function formatWarning(
-	warning: {
-		text: string;
-		entryName: string;
-		sourceFilePath: string | undefined;
-		sourceFileLine: number | undefined;
-		sourceFileColumn: number | undefined;
-	},
-	cwd: string,
-): string {
+function formatWarning(warning: WarningWithLocation, cwd: string): string {
 	const location = warning.sourceFilePath
 		? ` (${relative(cwd, warning.sourceFilePath)}:${warning.sourceFileLine ?? 0}:${warning.sourceFileColumn ?? 0})`
 		: "";
@@ -1298,20 +1300,8 @@ export async function runApiExtractor(
 		const bundledDtsPaths: string[] = [];
 		const perEntryModels = new Map<string, Record<string, unknown>>();
 		let tsdocMetadataOutputPath: string | undefined;
-		const collectedForgottenExports: {
-			text: string;
-			entryName: string;
-			sourceFilePath: string | undefined;
-			sourceFileLine: number | undefined;
-			sourceFileColumn: number | undefined;
-		}[] = [];
-		const collectedTsdocWarnings: {
-			text: string;
-			entryName: string;
-			sourceFilePath: string | undefined;
-			sourceFileLine: number | undefined;
-			sourceFileColumn: number | undefined;
-		}[] = [];
+		const collectedForgottenExports: WarningWithLocation[] = [];
+		const collectedTsdocWarnings: WarningWithLocation[] = [];
 
 		// Resolve TSDoc warnings behavior
 		const tsdocWarningsOption =
