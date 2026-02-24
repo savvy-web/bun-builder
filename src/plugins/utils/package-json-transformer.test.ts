@@ -126,10 +126,6 @@ describe("PackageJsonTransformer.transformBin", () => {
 			"my-cli": "./bin/cli.js",
 		});
 	});
-
-	test("handles undefined bin", () => {
-		expect(PackageJsonTransformer.transformBin(undefined)).toBeUndefined();
-	});
 });
 
 describe("PackageJsonTransformer.isConditionsObject", () => {

@@ -14,6 +14,7 @@ export default BunLibraryBuilder.create({
 		delete pkg.bundleDependencies;
 		delete pkg.scripts;
 		delete pkg.publishConfig;
+		delete pkg.packageManager;
 		delete pkg.devEngines;
 		return pkg;
 	},

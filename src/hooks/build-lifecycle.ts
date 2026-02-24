@@ -17,12 +17,11 @@
  * 7. **Package.json Write**: Transforms and writes package.json
  * 8. **Local Path Copy** (optional): Copies API artifacts to local paths
  *
- * @packageDocumentation
  */
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename as renameFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
 import type { BuildArtifact } from "bun";
 import { EntryExtractor } from "../plugins/utils/entry-extractor.js";
@@ -162,7 +161,6 @@ export class ApiModelConfigResolver {
 				tsdocMetadataEnabled: false,
 				tsdocMetadataFilename: ApiModelConfigResolver.DEFAULT_TSDOC_METADATA_FILENAME,
 				localPaths,
-				tsdoc: undefined,
 			};
 		}
 
@@ -173,7 +171,6 @@ export class ApiModelConfigResolver {
 				tsdocMetadataEnabled: true,
 				tsdocMetadataFilename: ApiModelConfigResolver.DEFAULT_TSDOC_METADATA_FILENAME,
 				localPaths,
-				tsdoc: undefined,
 			};
 		}
 
@@ -190,7 +187,7 @@ export class ApiModelConfigResolver {
 			tsdocMetadataEnabled,
 			tsdocMetadataFilename,
 			localPaths,
-			tsdoc: apiModel.tsdoc,
+			...(apiModel.tsdoc !== undefined ? { tsdoc: apiModel.tsdoc } : {}),
 		};
 	}
 
@@ -682,7 +679,7 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 				"process.env.__PACKAGE_VERSION__": JSON.stringify(context.version),
 				...context.options.define,
 			},
-			plugins: context.options.plugins,
+			...(context.options.plugins !== undefined ? { plugins: context.options.plugins } : {}),
 		});
 	} catch (error) {
 		// Handle AggregateError thrown by Bun.build() for detailed error messages
@@ -784,8 +781,7 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 			await mkdir(newDir, { recursive: true });
 
 			// Rename file
-			const { rename } = await import("node:fs/promises");
-			await rename(output.path, newPath);
+			await renameFile(output.path, newPath);
 
 			// Update output artifact
 			renamedOutputs.push({
@@ -798,7 +794,6 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 	}
 
 	// Clean up empty directories left after renaming
-	const { rmdir } = await import("node:fs/promises");
 	for (const output of result.outputs) {
 		const dir = dirname(output.path);
 		try {
@@ -809,6 +804,127 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 	}
 
 	logger.info(`Bundled ${renamedOutputs.length} file(s) in ${BuildLogger.formatTime(timer.elapsed())}`);
+
+	return { outputs: renamedOutputs, success: true };
+}
+
+/**
+ * Runs a bundleless build that compiles source files individually.
+ *
+ * @remarks
+ * Instead of bundling into single entry files, this mode transpiles each source file
+ * individually while preserving the source directory structure. Uses
+ * `ImportGraph.traceFromEntries()` to discover all reachable source files from entry points,
+ * then passes them all to `Bun.build()` with `packages: "external"`.
+ *
+ * The `src/` prefix is stripped from output paths so that `src/utils/helper.ts` becomes
+ * `utils/helper.js` in the output directory.
+ *
+ * @param context - The build context
+ * @returns Object containing build artifacts and success status
+ *
+ * @internal
+ */
+export async function runBundlessBuild(context: BuildContext): Promise<{ outputs: BuildArtifact[]; success: boolean }> {
+	const logger = BuildLogger.createEnvLogger(context.target);
+	const timer = BuildLogger.createTimer();
+
+	logger.info("bundleless build started...");
+
+	// Use ImportGraph to discover all reachable source files from entry points
+	const entryPaths = Object.values(context.entries);
+	const graph = new ImportGraph({ rootDir: context.cwd });
+	const traceResult = graph.traceFromEntries(entryPaths);
+
+	if (traceResult.errors.length > 0) {
+		for (const error of traceResult.errors) {
+			logger.warn(`Import graph: ${error.message}`);
+		}
+	}
+
+	if (traceResult.files.length === 0) {
+		logger.error("No source files discovered for bundleless build");
+		return { outputs: [], success: false };
+	}
+
+	logger.info(`Discovered ${traceResult.files.length} source file(s) for bundleless build`);
+
+	// Build externals array from options
+	const external: string[] = [];
+	if (context.options.externals) {
+		for (const ext of context.options.externals) {
+			if (typeof ext === "string") {
+				external.push(ext);
+			} else if (ext instanceof RegExp) {
+				external.push(ext.source);
+			}
+		}
+	}
+
+	let result: Awaited<ReturnType<typeof Bun.build>>;
+
+	try {
+		result = await Bun.build({
+			entrypoints: traceResult.files,
+			outdir: context.outdir,
+			target: context.options.bunTarget ?? "bun",
+			format: context.options.format ?? "esm",
+			splitting: false,
+			sourcemap: context.target === "dev" ? "linked" : "none",
+			minify: false,
+			external,
+			packages: "external",
+			naming: "[dir]/[name].[ext]",
+			define: {
+				"process.env.__PACKAGE_VERSION__": JSON.stringify(context.version),
+				...context.options.define,
+			},
+			...(context.options.plugins !== undefined ? { plugins: context.options.plugins } : {}),
+		});
+	} catch (error) {
+		if (error instanceof AggregateError && error.errors) {
+			logger.error("Bun.build() failed:");
+			for (const err of error.errors) {
+				const msg = err.message || String(err);
+				logger.error(`  ${msg}`);
+			}
+		} else {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			logger.error(`Bun.build() failed: ${errorMessage}`);
+		}
+		return { outputs: [], success: false };
+	}
+
+	if (!result.success) {
+		logger.error("Bun.build() failed:");
+		for (const log of result.logs) {
+			logger.error(`  ${String(log)}`);
+		}
+		return { outputs: [], success: false };
+	}
+
+	// Post-process: strip src/ prefix from output paths to match the pattern utils/helper.js
+	const renamedOutputs: BuildArtifact[] = [];
+
+	for (const output of result.outputs) {
+		const relativePath = relative(context.outdir, output.path);
+
+		// Strip src/ prefix from output paths
+		if (relativePath.startsWith("src/")) {
+			const strippedPath = relativePath.slice("src/".length);
+			const newPath = join(context.outdir, strippedPath);
+			await mkdir(dirname(newPath), { recursive: true });
+			await renameFile(output.path, newPath);
+			renamedOutputs.push({ ...output, path: newPath });
+		} else {
+			renamedOutputs.push(output);
+		}
+	}
+
+	// Clean up src/ subtree after renaming (force: true handles non-existent paths)
+	await rm(join(context.outdir, "src"), { recursive: true, force: true });
+
+	logger.info(`Compiled ${renamedOutputs.length} file(s) in ${BuildLogger.formatTime(timer.elapsed())}`);
 
 	return { outputs: renamedOutputs, success: true };
 }
@@ -1066,6 +1182,35 @@ function rewriteCanonicalReferences(node: unknown, originalPrefix: string, newPr
 }
 
 /**
+ * Warning message with optional source location info.
+ *
+ * @internal
+ */
+interface WarningWithLocation {
+	text: string;
+	entryName: string;
+	sourceFilePath: string | undefined;
+	sourceFileLine: number | undefined;
+	sourceFileColumn: number | undefined;
+}
+
+/**
+ * Formats a warning message with source location info for consistent output.
+ *
+ * @param warning - The warning object with text and optional source location
+ * @param cwd - Current working directory for relative path formatting
+ * @returns Formatted warning string
+ *
+ * @internal
+ */
+function formatWarning(warning: WarningWithLocation, cwd: string): string {
+	const location = warning.sourceFilePath
+		? ` (${relative(cwd, warning.sourceFilePath)}:${warning.sourceFileLine ?? 0}:${warning.sourceFileColumn ?? 0})`
+		: "";
+	return `  [${warning.entryName}]${location} ${warning.text}`;
+}
+
+/**
  * Bundles declarations with API Extractor for all entry points.
  *
  * @remarks
@@ -1087,6 +1232,7 @@ export async function runApiExtractor(
 	context: BuildContext,
 	tempDtsDir: string,
 	apiModel?: ApiModelOptions | boolean,
+	options?: { bundleless?: boolean },
 ): Promise<{
 	bundledDtsPaths?: string[];
 	apiModelPath?: string;
@@ -1129,12 +1275,33 @@ export async function runApiExtractor(
 
 	try {
 		// Import API Extractor dynamically
-		const { Extractor, ExtractorConfig } = await import("@microsoft/api-extractor");
+		const { Extractor, ExtractorConfig, ExtractorLogLevel } = await import("@microsoft/api-extractor");
+
+		// Load tsdoc.json config for API Extractor to respect custom tag definitions.
+		// Typed as the return type of TSDocConfigFile.loadForFolder (TSDocConfigFile instance).
+		// We use `any` here because @microsoft/tsdoc-config is dynamically imported and its
+		// constructor is private, making InstanceType unusable.
+		// biome-ignore lint/suspicious/noExplicitAny: Dynamic import type from @microsoft/tsdoc-config
+		let tsdocConfigFile: any;
+		try {
+			const { TSDocConfigFile } = await import("@microsoft/tsdoc-config");
+			tsdocConfigFile = TSDocConfigFile.loadForFolder(context.cwd);
+		} catch {
+			// tsdoc-config loading is optional; fall back to defaults
+		}
 
 		const bundledDtsPaths: string[] = [];
 		const perEntryModels = new Map<string, Record<string, unknown>>();
-		let lastTsdocMetadataPath: string | undefined;
-		const collectedForgottenExports: { text: string; entryName: string }[] = [];
+		let tsdocMetadataOutputPath: string | undefined;
+		const collectedForgottenExports: WarningWithLocation[] = [];
+		const collectedTsdocWarnings: WarningWithLocation[] = [];
+
+		// Resolve TSDoc warnings behavior
+		const tsdocWarningsOption =
+			(typeof apiModel === "object" && apiModel !== null ? apiModel.tsdoc?.warnings : undefined) ??
+			(BuildLogger.isCI() ? "fail" : "log");
+
+		const isBundleless = options?.bundleless === true;
 
 		// Run API Extractor per entry
 		for (const [entryName, sourcePath] of exportEntries) {
@@ -1154,9 +1321,12 @@ export async function runApiExtractor(
 				? join(context.outdir, `.tmp-${entryName.replace(/\//g, "-")}.api.json`)
 				: undefined;
 
-			const tsdocMetadataPath = apiModelConfig.tsdocMetadataEnabled
-				? join(context.outdir, apiModelConfig.tsdocMetadataFilename)
-				: undefined;
+			// Only generate tsdoc-metadata for the main entry
+			const isMainEntry = entryName === "index" || exportEntries.length === 1;
+			const tsdocMetadataPath =
+				apiModelConfig.tsdocMetadataEnabled && isMainEntry
+					? join(context.outdir, apiModelConfig.tsdocMetadataFilename)
+					: undefined;
 
 			const extractorConfig = ExtractorConfig.prepare({
 				configObject: {
@@ -1165,10 +1335,16 @@ export async function runApiExtractor(
 					compiler: {
 						tsconfigFilePath: context.options.tsconfigPath ?? join(context.cwd, "tsconfig.json"),
 					},
-					dtsRollup: {
-						enabled: true,
-						untrimmedFilePath: bundledDtsPath,
-					},
+					// EnumMemberOrder.Preserve = "preserve" from @microsoft/api-extractor-model
+					// (not a direct dependency, so we cast the string value)
+					// biome-ignore lint/suspicious/noExplicitAny: EnumMemberOrder from dynamic transitive dependency
+					enumMemberOrder: "preserve" as any,
+					dtsRollup: isBundleless
+						? { enabled: false }
+						: {
+								enabled: true,
+								untrimmedFilePath: bundledDtsPath,
+							},
 					docModel: perEntryApiModelPath
 						? {
 								enabled: true,
@@ -1188,37 +1364,51 @@ export async function runApiExtractor(
 				},
 				packageJsonFullPath: join(context.cwd, "package.json"),
 				configObjectFullPath: undefined,
+				tsdocConfigFile,
 			});
 
 			const extractorResult = Extractor.invoke(extractorConfig, {
 				localBuild: true,
 				showVerboseMessages: false,
-				messageCallback: (message: { text?: string; logLevel?: string; messageId?: string }) => {
+				messageCallback: (message) => {
 					// Suppress TypeScript version mismatch warnings
 					if (
 						message.text?.includes("Analysis will use the bundled TypeScript version") ||
 						message.text?.includes("The target project appears to use TypeScript")
 					) {
-						message.logLevel = "none";
+						message.logLevel = ExtractorLogLevel.None;
 						return;
 					}
 
 					// Suppress API signature change warnings
 					if (message.text?.includes("You have changed the public API signature")) {
-						message.logLevel = "none";
+						message.logLevel = ExtractorLogLevel.None;
 						return;
 					}
 
-					// Suppress TSDoc warnings (they can be noisy)
+					// Collect TSDoc warnings with source location info
 					if (message.messageId?.startsWith("tsdoc-")) {
-						message.logLevel = "none";
+						collectedTsdocWarnings.push({
+							text: message.text ?? message.messageId,
+							entryName,
+							sourceFilePath: message.sourceFilePath,
+							sourceFileLine: message.sourceFileLine,
+							sourceFileColumn: message.sourceFileColumn,
+						});
+						message.logLevel = ExtractorLogLevel.None;
 						return;
 					}
 
-					// Handle forgotten export messages
+					// Handle forgotten export messages with source location info
 					if (message.messageId === "ae-forgotten-export" && message.text) {
-						collectedForgottenExports.push({ text: message.text, entryName });
-						message.logLevel = "none";
+						collectedForgottenExports.push({
+							text: message.text,
+							entryName,
+							sourceFilePath: message.sourceFilePath,
+							sourceFileLine: message.sourceFileLine,
+							sourceFileColumn: message.sourceFileColumn,
+						});
+						message.logLevel = ExtractorLogLevel.None;
 						return;
 					}
 				},
@@ -1229,10 +1419,12 @@ export async function runApiExtractor(
 				continue;
 			}
 
-			bundledDtsPaths.push(bundledDtsPath);
+			if (!isBundleless) {
+				bundledDtsPaths.push(bundledDtsPath);
+			}
 
 			if (tsdocMetadataPath && existsSync(tsdocMetadataPath)) {
-				lastTsdocMetadataPath = tsdocMetadataPath;
+				tsdocMetadataOutputPath = tsdocMetadataPath;
 			}
 
 			// Read per-entry API model for merging
@@ -1242,15 +1434,40 @@ export async function runApiExtractor(
 			}
 		}
 
-		if (bundledDtsPaths.length === 0) {
+		if (!isBundleless && bundledDtsPaths.length === 0) {
 			logger.warn("API Extractor failed for all entries, copying unbundled declarations");
 			const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
 			return { dtsFiles };
 		}
 
+		// Process collected TSDoc warnings
+		if (collectedTsdocWarnings.length > 0 && tsdocWarningsOption !== "none") {
+			// Separate first-party warnings (project source) from third-party (node_modules)
+			const firstParty = collectedTsdocWarnings.filter(
+				(w) => !w.sourceFilePath || !w.sourceFilePath.includes("node_modules"),
+			);
+			const thirdParty = collectedTsdocWarnings.filter((w) => w.sourceFilePath?.includes("node_modules"));
+
+			// Third-party warnings are always logged (never fail)
+			if (thirdParty.length > 0) {
+				const thirdPartyMessages = thirdParty.map((w) => formatWarning(w, context.cwd)).join("\n");
+				logger.warn(`TSDoc warnings from third-party packages:\n${thirdPartyMessages}`);
+			}
+
+			// First-party warnings respect the warnings option
+			if (firstParty.length > 0) {
+				const firstPartyMessages = firstParty.map((w) => formatWarning(w, context.cwd)).join("\n");
+
+				if (tsdocWarningsOption === "fail") {
+					throw new Error(`TSDoc warnings detected:\n${firstPartyMessages}`);
+				}
+				logger.warn(`TSDoc warnings:\n${firstPartyMessages}`);
+			}
+		}
+
 		// Process collected forgotten export messages
 		if (collectedForgottenExports.length > 0) {
-			const messages = collectedForgottenExports.map((m) => `  [${m.entryName}] ${m.text}`).join("\n");
+			const messages = collectedForgottenExports.map((m) => formatWarning(m, context.cwd)).join("\n");
 
 			if (forgottenExportsOption === "error") {
 				throw new Error(`Forgotten exports detected:\n${messages}`);
@@ -1294,8 +1511,8 @@ export async function runApiExtractor(
 			}
 		}
 
-		if (lastTsdocMetadataPath && existsSync(lastTsdocMetadataPath)) {
-			logger.success(`Emitted TSDoc metadata: ${basename(lastTsdocMetadataPath)}`);
+		if (tsdocMetadataOutputPath && existsSync(tsdocMetadataOutputPath)) {
+			logger.success(`Emitted TSDoc metadata: ${basename(tsdocMetadataOutputPath)}`);
 		}
 
 		// Generate resolved tsconfig.json for virtual TypeScript environments
@@ -1337,10 +1554,10 @@ export async function runApiExtractor(
 
 		return {
 			bundledDtsPaths,
-			apiModelPath,
-			tsdocMetadataPath: lastTsdocMetadataPath,
-			tsconfigPath,
-			tsdocConfigPath,
+			...(apiModelPath !== undefined ? { apiModelPath } : {}),
+			...(tsdocMetadataOutputPath !== undefined ? { tsdocMetadataPath: tsdocMetadataOutputPath } : {}),
+			...(tsconfigPath !== undefined ? { tsconfigPath } : {}),
+			...(tsdocConfigPath !== undefined ? { tsdocConfigPath } : {}),
 		};
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1380,9 +1597,9 @@ export async function writePackageJson(context: BuildContext, filesArray: Set<st
 	const transformed = await PackageJsonTransformer.build(context.packageJson, {
 		isProduction,
 		processTSExports: true,
-		bundle: true,
-		format: context.options.format,
-		transform: transformFn,
+		bundle: context.options.bundle ?? true,
+		...(context.options.format !== undefined ? { format: context.options.format } : {}),
+		...(transformFn !== undefined ? { transform: transformFn } : {}),
 	});
 
 	// Set private flag for dev target
@@ -1650,7 +1867,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 
 	// Extract entry points
 	const extractor = new EntryExtractor({
-		exportsAsIndexes: options.exportsAsIndexes,
+		...(options.exportsAsIndexes !== undefined ? { exportsAsIndexes: options.exportsAsIndexes } : {}),
 	});
 	const { entries, exportPaths } = extractor.extract(packageJson);
 
@@ -1715,12 +1932,13 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 		const lintOptions = typeof lintConfig === "object" ? lintConfig : {};
 		await runTsDocLint(context, {
 			...lintOptions,
-			tsdoc: Object.keys(sharedTsdoc).length > 0 ? sharedTsdoc : undefined,
+			...(Object.keys(sharedTsdoc).length > 0 ? { tsdoc: sharedTsdoc } : {}),
 		});
 	}
 
-	// Phase 2: Bundle with Bun.build()
-	const { outputs, success } = await runBunBuild(context);
+	// Phase 2: Build with Bun.build()
+	const isBundleMode = options.bundle !== false;
+	const { outputs, success } = isBundleMode ? await runBunBuild(context) : await runBundlessBuild(context);
 	if (!success) {
 		return {
 			success: false,
@@ -1752,8 +1970,33 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 	const dtsSuccess = await runTsgoGeneration(context, tempDtsDir);
 	if (!dtsSuccess) {
 		logger.warn("Declaration generation failed, continuing without .d.ts files");
+	} else if (!isBundleMode) {
+		// Bundleless mode: copy raw .d.ts files (no DTS rollup)
+		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
+		for (const file of dtsFiles) {
+			filesArray.add(file);
+		}
+
+		// In bundleless mode, still run API Extractor for .api.json only if apiModel is enabled
+		if (target === "npm" && options.apiModel !== false) {
+			const {
+				apiModelPath,
+				tsconfigPath: tscPath,
+				tsdocConfigPath: tsdocPath,
+			} = await runApiExtractor(context, tempDtsDir, options.apiModel, { bundleless: true });
+
+			if (apiModelPath) {
+				filesArray.add(`!${relative(outdir, apiModelPath)}`);
+			}
+			if (tscPath) {
+				filesArray.add("!tsconfig.json");
+			}
+			if (tsdocPath) {
+				filesArray.add("!tsdoc.json");
+			}
+		}
 	} else {
-		// Phase 4: Bundle declarations with API Extractor
+		// Bundle mode: use API Extractor for DTS rollup
 		const { bundledDtsPaths, apiModelPath, tsconfigPath, tsdocConfigPath, dtsFiles } = await runApiExtractor(
 			context,
 			tempDtsDir,
@@ -1787,24 +2030,24 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 			// tsdoc.json is excluded from npm publish (used by documentation tools)
 			filesArray.add("!tsdoc.json");
 		}
+	}
 
-		// Persist tsdoc.json to project root for IDE support
-		// Uses the shared tsdoc config from apiModel.tsdoc (which also drives lint)
-		// Only persist if lint didn't already persist (to avoid duplicate writes)
-		if (target === "npm" && !lintEnabled) {
-			const unscopedName = FileSystemUtils.getUnscopedPackageName(packageJson.name ?? "package");
-			const apiModelConfig = ApiModelConfigResolver.resolve(options.apiModel, unscopedName);
-			const tsdocOptions = apiModelConfig.tsdoc ?? {};
+	// Persist tsdoc.json to project root for IDE support
+	// Uses the shared tsdoc config from apiModel.tsdoc (which also drives lint)
+	// Only persist if lint didn't already persist (to avoid duplicate writes)
+	if (target === "npm" && !lintEnabled) {
+		const unscopedName = FileSystemUtils.getUnscopedPackageName(packageJson.name ?? "package");
+		const apiModelConfig = ApiModelConfigResolver.resolve(options.apiModel, unscopedName);
+		const tsdocOptions = apiModelConfig.tsdoc ?? {};
 
-			if (TsDocConfigBuilder.shouldPersist(tsdocOptions.persistConfig)) {
-				try {
-					const persistPath = TsDocConfigBuilder.getConfigPath(tsdocOptions.persistConfig, cwd);
-					await TsDocConfigBuilder.writeConfigFile(tsdocOptions, persistPath);
-					logger.success(`Persisted tsdoc configuration to ${persistPath}`);
-				} catch (error) {
-					const errorMessage = error instanceof Error ? error.message : String(error);
-					logger.warn(`Failed to persist tsdoc.json: ${errorMessage}`);
-				}
+		if (TsDocConfigBuilder.shouldPersist(tsdocOptions.persistConfig)) {
+			try {
+				const persistPath = TsDocConfigBuilder.getConfigPath(tsdocOptions.persistConfig, cwd);
+				await TsDocConfigBuilder.writeConfigFile(tsdocOptions, persistPath);
+				logger.success(`Persisted tsdoc configuration to ${persistPath}`);
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error);
+				logger.warn(`Failed to persist tsdoc.json: ${errorMessage}`);
 			}
 		}
 	}

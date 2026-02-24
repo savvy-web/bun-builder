@@ -50,8 +50,8 @@ export class TsconfigResolverError extends Error {
 	constructor(message: string, option?: string, value?: unknown) {
 		super(message);
 		this.name = "TsconfigResolverError";
-		this.option = option;
-		this.value = value;
+		if (option !== undefined) this.option = option;
+		if (value !== undefined) this.value = value;
 	}
 }
 

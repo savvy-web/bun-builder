@@ -202,7 +202,7 @@ export class TsDocConfigBuilder {
 		const tsdocConfig: Record<string, unknown> = {
 			$schema: "https://developer.microsoft.com/json-schemas/tsdoc/v0/tsdoc.schema.json",
 			noStandardTags: !useStandardTags,
-			reportUnsupportedHtmlElements: false,
+			reportUnsupportedHtmlElements: true,
 		};
 
 		// Only include tagDefinitions if there are any (custom tags or subset of groups)

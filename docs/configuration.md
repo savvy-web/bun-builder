@@ -6,6 +6,7 @@ Complete reference for all `BunLibraryBuilderOptions` configuration properties.
 
 - [Entry Point Configuration](#entry-point-configuration)
 - [Output Configuration](#output-configuration)
+- [Bundle Mode](#bundle-mode)
 - [Bundling Configuration](#bundling-configuration)
 - [TypeScript Configuration](#typescript-configuration)
 - [Transformation Hooks](#transformation-hooks)
@@ -134,6 +135,45 @@ export default BunLibraryBuilder.create({
 | `from` | `string` | required | Source path or glob pattern |
 | `to` | `string` | `'./'` | Destination path relative to output directory |
 | `noErrorOnMissing` | `boolean` | `false` | Suppress errors for missing files |
+
+---
+
+## Bundle Mode
+
+### `bundle`
+
+Whether to bundle source files into single-file outputs per entry point.
+
+| Property | Type | Default |
+| --- | --- | --- |
+| `bundle` | `boolean` | `true` |
+
+When `true` (default), entry point source files are bundled into single-file
+outputs with rolled-up `.d.ts` declarations via API Extractor.
+
+When `false` (bundleless mode), source files are compiled individually,
+preserving the source directory structure:
+
+- JS files are transpiled individually (not bundled)
+- Raw tsgo `.d.ts` files are emitted directly (no DTS rollup)
+- API Extractor still runs for `.api.json` generation if `apiModel` is enabled
+- Source structure is preserved in output (e.g., `src/utils/helper.ts` becomes
+  `utils/helper.js` and `utils/helper.d.ts`)
+
+File discovery in bundleless mode uses `ImportGraph.traceFromEntries()` to find
+all reachable source files from entry points.
+
+```typescript
+// Bundled mode (default)
+export default BunLibraryBuilder.create({
+  bundle: true,
+});
+
+// Bundleless mode
+export default BunLibraryBuilder.create({
+  bundle: false,
+});
+```
 
 ---
 
@@ -347,6 +387,7 @@ Options for API model generation, TSDoc configuration, and TSDoc lint validation
 | --- | --- | --- |
 | `apiModel` | `boolean \| ApiModelOptions` | `true` (enabled by default) |
 
+The `BunLibraryBuilder.DEFAULT_OPTIONS` set `apiModel: true` and `bundle: true`.
 When `apiModel` is `undefined` (not specified), API model generation is enabled
 by default for npm builds. Set `apiModel: false` to explicitly disable it.
 
@@ -402,7 +443,7 @@ Configure once at `apiModel.tsdoc`, and lint picks up the same tag definitions.
 | `tagDefinitions` | `TsDocTagDefinition[]` | - | Custom tag definitions |
 | `supportForTags` | `Record<string, boolean>` | - | Override tag support |
 | `persistConfig` | `boolean \| string` | `true` locally, `false` in CI | Persist tsdoc.json to disk |
-| `warnings` | `'log' \| 'fail' \| 'none'` | `'fail'` in CI, `'log'` locally | TSDoc warning behavior |
+| `warnings` | `'log' \| 'fail' \| 'none'` | `'fail'` in CI, `'log'` locally | How to handle API Extractor TSDoc warnings |
 | `lint` | `TsDocLintOptions \| boolean` | - | TSDoc lint configuration |
 
 #### TsDocLintOptions
@@ -440,6 +481,32 @@ export default BunLibraryBuilder.create({
   },
 });
 ```
+
+#### TSDoc Warnings Behavior
+
+API Extractor collects TSDoc warnings with source file location info during
+declaration bundling. Warnings are separated into first-party (your code) and
+third-party (node\_modules). Third-party warnings are always logged but never
+fail the build.
+
+The `tsdoc.warnings` option controls first-party warning behavior:
+
+- `"fail"` (default in CI) -- Throw an error and abort the build
+- `"log"` (default locally) -- Log warnings and continue
+- `"none"` -- Suppress warnings entirely
+
+API Extractor also loads `tsdoc.json` via `TSDocConfigFile.loadForFolder()` so
+custom tag definitions are respected during declaration bundling.
+
+#### Forgotten Exports Behavior
+
+When API Extractor detects that a public API references an unexported
+declaration (`ae-forgotten-export`), it reports the warning with source file
+location info. The `forgottenExports` option controls this:
+
+- `"error"` (default in CI) -- Throw an error and abort the build
+- `"include"` (default locally) -- Log warnings with source locations
+- `"ignore"` -- Suppress silently
 
 ---
 
@@ -490,6 +557,10 @@ The builder produces different outputs for each target:
 | Catalog resolution | No | Yes |
 | `private` field | `true` | Based on `publishConfig` |
 | Local path copying | No | Yes (non-CI only) |
+| DTS rollup | Per `bundle` option | Per `bundle` option |
+
+Both targets respect the `bundle` option. When `bundle: false`, both dev and npm
+targets produce bundleless output with raw `.d.ts` files.
 
 ### Dev Target
 
@@ -506,6 +577,7 @@ Production builds include:
 - No source maps (smaller package size)
 - Resolved `catalog:` and `workspace:` references
 - API model generation (enabled by default)
+- TSDoc warnings and forgotten exports reported with source locations
 - `private` based on `publishConfig.access`
 - Build artifacts copied to `localPaths` (if configured, non-CI only)
 
@@ -520,6 +592,9 @@ import { BunLibraryBuilder } from '@savvy-web/bun-builder';
 const options: BunLibraryBuilderOptions = {
   // Entry points (auto-detected by default)
   // entry: { index: './src/index.ts' },
+
+  // Build mode (true = bundled, false = bundleless)
+  bundle: true, // default from DEFAULT_OPTIONS
 
   // Build targets
   targets: ['dev', 'npm'],
@@ -543,12 +618,13 @@ const options: BunLibraryBuilderOptions = {
     { from: './assets', to: './assets' },
   ],
 
-  // API model generation with TSDoc lint
+  // API model generation with TSDoc lint and warnings
   apiModel: {
-    enabled: true,
+    enabled: true, // default from DEFAULT_OPTIONS
     localPaths: ['./docs/api'],
     forgottenExports: 'include',
     tsdoc: {
+      warnings: 'log', // 'fail' in CI, 'log' locally, 'none' to suppress
       lint: {
         enabled: true,
         onError: 'error',

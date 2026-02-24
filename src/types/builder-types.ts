@@ -6,7 +6,6 @@
  * the BunLibraryBuilder. All types are designed to work together to provide a
  * type-safe build configuration experience.
  *
- * @packageDocumentation
  */
 
 import type { BunPlugin } from "bun";
@@ -858,6 +857,25 @@ export interface BunLibraryBuilderOptions {
 	 * ```
 	 */
 	virtualEntries?: Record<string, VirtualEntryConfig>;
+
+	/**
+	 * Whether to bundle source files into single-file outputs per entry point.
+	 *
+	 * @remarks
+	 * When `true` (default), entry point source files are bundled into single-file
+	 * outputs with rolled-up `.d.ts` declarations via API Extractor.
+	 *
+	 * When `false` (bundleless mode), source files are compiled individually,
+	 * preserving the source directory structure:
+	 * - JS files are transpiled individually (not bundled)
+	 * - Raw tsgo `.d.ts` files are emitted directly (no DTS rollup)
+	 * - API Extractor still runs for `.api.json` generation if `apiModel` is enabled
+	 * - Source structure is preserved in output (e.g., `src/utils/helper.ts` becomes
+	 *   `utils/helper.js` and `utils/helper.d.ts`)
+	 *
+	 * @defaultValue `true`
+	 */
+	bundle?: boolean;
 
 	/**
 	 * Output module format.

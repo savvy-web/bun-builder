@@ -43,7 +43,6 @@
  * }
  * ```
  *
- * @packageDocumentation
  */
 
 import { readFileSync, statSync } from "node:fs";
