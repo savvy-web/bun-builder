@@ -223,7 +223,7 @@ export class LibraryTSConfigFile extends TSConfigFile {
 	 * This method transforms the base configuration for bundle mode by:
 	 * - Replacing `${configDir}` with absolute relative paths (../../../../../../)
 	 * - Filtering include to only src and public directories
-	 * - Only including .ts and .mts files (no .tsx, .cts)
+	 * - Only including .ts, .tsx, and .mts files (no .cts)
 	 * - Setting rootDir to the project root
 	 * - Setting outDir to just "dist"
 	 * - Changing tsBuildInfoFile to include target: `dist/.tsbuildinfo.{target}.bundle`
@@ -248,8 +248,8 @@ export class LibraryTSConfigFile extends TSConfigFile {
 				);
 			})
 			.filter((pattern) => {
-				// Exclude .tsx and .cts files
-				return !pattern.includes(".tsx") && !pattern.includes(".cts");
+				// Exclude .cts files (CommonJS not supported in ESM bundles)
+				return !pattern.includes(".cts");
 			});
 
 		return {
@@ -259,7 +259,7 @@ export class LibraryTSConfigFile extends TSConfigFile {
 				outDir: "dist",
 				tsBuildInfoFile: `${process.cwd()}/dist/.tsbuildinfo.${target}.bundle`,
 			},
-			include,
+			...(include !== undefined ? { include } : {}),
 		};
 	}
 

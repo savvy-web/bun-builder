@@ -123,6 +123,19 @@ export class BunLibraryBuilder {
 	private static readonly DEFAULT_TARGETS: BuildTarget[] = ["dev", "npm"];
 
 	/**
+	 * Default options applied to all builds.
+	 *
+	 * @remarks
+	 * These defaults match the rslib-builder conventions:
+	 * - `apiModel: true`: API model generation is enabled by default
+	 * - `bundle: true`: Bundled output mode by default
+	 */
+	static readonly DEFAULT_OPTIONS: Partial<BunLibraryBuilderOptions> = {
+		apiModel: true,
+		bundle: true,
+	};
+
+	/**
 	 * Builder configuration options.
 	 *
 	 * @internal
@@ -148,7 +161,7 @@ export class BunLibraryBuilder {
 	 * ```
 	 */
 	constructor(options: BunLibraryBuilderOptions = {}) {
-		this.options = options;
+		this.options = { ...BunLibraryBuilder.DEFAULT_OPTIONS, ...options };
 	}
 
 	/**

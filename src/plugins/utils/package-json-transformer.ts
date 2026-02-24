@@ -187,7 +187,7 @@ export class PackageJsonTransformer {
 	 * // Returns: { 'my-cli': './bin/my-cli.js' }
 	 * ```
 	 */
-	static transformBin(bin: PackageJson["bin"]): PackageJson["bin"] {
+	static transformBin(bin: NonNullable<PackageJson["bin"]>): NonNullable<PackageJson["bin"]> {
 		if (typeof bin === "string") {
 			if (bin.endsWith(".ts") || bin.endsWith(".tsx")) {
 				return "./bin/cli.js";

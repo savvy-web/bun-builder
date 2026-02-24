@@ -7,6 +7,9 @@ How `@savvy-web/bun-builder` generates and bundles TypeScript declarations.
 - [Overview](#overview)
 - [Declaration Generation with tsgo](#declaration-generation-with-tsgo)
 - [Declaration Bundling with API Extractor](#declaration-bundling-with-api-extractor)
+- [Bundleless Mode](#bundleless-mode)
+- [TSDoc Warnings](#tsdoc-warnings)
+- [Forgotten Exports](#forgotten-exports)
 - [dtsBundledPackages Option](#dtsbundledpackages-option)
 - [API Model Generation](#api-model-generation)
 - [Fallback Behavior](#fallback-behavior)
@@ -118,6 +121,134 @@ dist/npm/
 
 ---
 
+## Bundleless Mode
+
+When `bundle: false`, declarations are handled differently from the default
+bundled mode.
+
+### How It Works
+
+1. tsgo generates individual `.d.ts` files as normal
+2. Raw `.d.ts` files are copied directly to the output directory (no DTS rollup)
+3. The `src/` prefix is stripped: `src/utils/helper.d.ts` becomes `utils/helper.d.ts`
+4. API Extractor still runs for `.api.json` generation if `apiModel` is enabled,
+   but with `dtsRollup: { enabled: false }`
+
+### Output Example
+
+**Bundleless output:**
+
+```text
+dist/npm/
+├── index.js
+├── index.d.ts
+├── utils/
+│   ├── helpers.js
+│   ├── helpers.d.ts
+│   ├── formatters.js
+│   └── formatters.d.ts
+└── types/
+    ├── config.js
+    └── config.d.ts
+```
+
+### When to Use Bundleless Mode
+
+- Packages where consumers import deep paths (e.g., `import { x } from 'pkg/utils/helpers'`)
+- Libraries that re-export many modules and want to preserve tree-shaking granularity
+- When DTS rollup causes issues with complex type dependencies
+
+### Configuration
+
+```typescript
+import { BunLibraryBuilder } from '@savvy-web/bun-builder';
+
+export default BunLibraryBuilder.create({
+  bundle: false,
+  apiModel: true, // Still generates .api.json for documentation
+});
+```
+
+---
+
+## TSDoc Warnings
+
+API Extractor collects TSDoc warnings during declaration bundling and reports
+them with source file location info for easier debugging.
+
+### How Warnings Are Collected
+
+During API Extractor runs, TSDoc warnings (messages with IDs starting with
+`tsdoc-`) are intercepted and collected rather than logged immediately. Each
+warning records:
+
+- Warning text
+- Entry point name
+- Source file path
+- Line and column numbers
+
+### First-Party vs. Third-Party
+
+Warnings are separated by origin:
+
+- **First-party** (your source code) -- controlled by `tsdoc.warnings` option
+- **Third-party** (node\_modules) -- always logged as warnings, never fail the build
+
+### Warning Behavior
+
+Controlled via `apiModel.tsdoc.warnings`:
+
+| Value | Behavior |
+| --- | --- |
+| `"fail"` (CI default) | Throw error and abort build |
+| `"log"` (local default) | Log warnings and continue |
+| `"none"` | Suppress entirely |
+
+### TSDocConfigFile Loading
+
+API Extractor loads `tsdoc.json` via `TSDocConfigFile.loadForFolder()` from
+`@microsoft/tsdoc-config`. This means custom tag definitions in your project's
+`tsdoc.json` are automatically respected during declaration bundling, without
+needing to duplicate configuration.
+
+---
+
+## Forgotten Exports
+
+API Extractor reports `ae-forgotten-export` when a public API references a
+declaration that is not exported. These warnings now include source file
+location info.
+
+### Warning Format
+
+Forgotten export warnings include the source file path, line, and column where
+the unexported declaration is referenced:
+
+```text
+warn    [npm] Forgotten exports detected:
+  [index] (src/types/internal.ts:15:0) The symbol "InternalConfig" needs to be exported...
+```
+
+### Controlling Behavior
+
+The `apiModel.forgottenExports` option determines how these are handled:
+
+| Value | Behavior |
+| --- | --- |
+| `"error"` (CI default) | Throw error and abort build |
+| `"include"` (local default) | Log with source locations |
+| `"ignore"` | Suppress silently |
+
+```typescript
+export default BunLibraryBuilder.create({
+  apiModel: {
+    forgottenExports: 'include', // Log warnings locally
+  },
+});
+```
+
+---
+
 ## dtsBundledPackages Option
 
 Control which dependency types are inlined vs. referenced.
@@ -196,6 +327,7 @@ The API model contains:
 - TSDoc documentation comments
 - Type information
 - Source file locations
+- Enum members in source order (`enumMemberOrder: "preserve"`)
 
 ### Using API Models
 
@@ -280,7 +412,7 @@ info    [npm] Copied 5 unbundled declaration file(s)
 
 ### API Extractor warnings
 
-**Symptom:** TSDoc warnings during build
+**Symptom:** TSDoc warnings during build (with source location info)
 
 **Solutions:**
 
@@ -296,7 +428,19 @@ info    [npm] Copied 5 unbundled declaration file(s)
 
 2. Fix TSDoc comment syntax (see [TSDoc Reference](https://tsdoc.org/))
 
-3. Suppress specific warnings in API Extractor config (not recommended)
+3. Control warning behavior with `tsdoc.warnings`:
+
+   ```typescript
+   export default BunLibraryBuilder.create({
+     apiModel: {
+       tsdoc: {
+         warnings: 'none', // Suppress TSDoc warnings
+       },
+     },
+   });
+   ```
+
+4. For forgotten export warnings, use `forgottenExports: 'ignore'` to suppress
 
 ### Missing types in bundled output
 

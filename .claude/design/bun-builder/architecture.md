@@ -3,22 +3,21 @@ status: current
 module: bun-builder
 category: architecture
 created: 2026-01-26
-updated: 2026-02-10
-last-synced: 2026-02-10
+updated: 2026-02-24
+last-synced: 2026-02-24
 completeness: 100
 related: []
 dependencies: []
 sync-notes: |
-  Synced with feat/rslib-builder-alignment branch changes (8 commits):
-  - exportPaths: EntryExtractor returns export key mapping for multi-entry API models
-  - Multi-entry API model merging with canonical reference rewriting
-  - tsdocLint moved under apiModel.tsdoc.lint (removed top-level option)
-  - virtualEntries for bundling non-exported files (pnpmfile.cjs, CLI shims)
-  - forgottenExports option on ApiModelOptions (include/error/ignore)
-  - format option on BunLibraryBuilderOptions (esm/cjs, was hardcoded ESM-only)
-  - TSDoc CI validation (buildConfigObject, validateConfigFile, writeConfigFile validates in CI)
-  - apiModel defaults to enabled: true when undefined
-  - bunTarget option for Bun.build() target (bun/node/browser)
+  Synced with feat/support-tsx-files branch changes:
+  - bundle: false bundleless mode (runBundlessBuild using ImportGraph.traceFromEntries)
+  - TSDoc warnings collection with source location info (warnings option: fail/log/none)
+  - Forgotten exports now include sourceFilePath/sourceFileLine/sourceFileColumn
+  - tsdoc-metadata.json generated only for main entry (index or single entry)
+  - enumMemberOrder: "preserve" added to API Extractor config
+  - reportUnsupportedHtmlElements: true in TsDocConfigBuilder
+  - BunLibraryBuilder.DEFAULT_OPTIONS static readonly (apiModel: true, bundle: true)
+  - TSDocConfigFile.loadForFolder() from @microsoft/tsdoc-config for API Extractor
 ---
 
 # Bun Builder - Architecture
@@ -56,6 +55,7 @@ transformation, and multi-target builds.
 - **Automatic configuration**: Auto-detect entries from package.json exports
 - **Multi-target support**: Single configuration produces dev and npm builds
 - **Multi-format output**: ESM (default) or CJS via `format` option
+- **Bundleless mode**: `bundle: false` preserves source structure with individual file compilation
 - **Multi-entry declarations**: Per-entry API Extractor with merged API models
 - **Declaration bundling**: tsgo + API Extractor for rolled-up .d.ts files
 - **Catalog resolution**: Support for Bun's `catalog:` and `workspace:` protocols
@@ -97,6 +97,12 @@ libraries with Bun.
 
 ```typescript
 class BunLibraryBuilder {
+  // Default options applied to all builds
+  static readonly DEFAULT_OPTIONS: Partial<BunLibraryBuilderOptions> = {
+    apiModel: true,
+    bundle: true,
+  };
+
   // Factory method - recommended entry point
   static async create(options?: BunLibraryBuilderOptions): Promise<BuildResult[]>
 
@@ -108,6 +114,11 @@ class BunLibraryBuilder {
 
 type BuildTarget = "dev" | "npm";
 ```
+
+The `DEFAULT_OPTIONS` static property is merged with user-provided options in the
+constructor: `{ ...BunLibraryBuilder.DEFAULT_OPTIONS, ...options }`. This means
+API model generation and bundled output mode are enabled by default unless the
+user explicitly overrides them.
 
 **Dependencies:**
 
@@ -126,7 +137,8 @@ type BuildTarget = "dev" | "npm";
 | --- | --- |
 | `executeBuild()` | Main orchestrator running all phases |
 | `runTsDocLint()` | Pre-build TSDoc validation |
-| `runBunBuild()` | Execute Bun.build() bundling |
+| `runBunBuild()` | Execute Bun.build() bundling (bundle mode) |
+| `runBundlessBuild()` | Individual file compilation (bundleless mode) |
 | `runTsgoGeneration()` | Generate .d.ts with tsgo |
 | `runApiExtractor()` | Per-entry declaration bundling with API Extractor |
 | `mergeApiModels()` | Merge per-entry API models with canonical reference rewriting |
@@ -506,6 +518,7 @@ Extractor and documentation tools based on tag group selections.
 - Expands tag groups into individual tag definitions from `@microsoft/tsdoc`
 - Supports three standardization groups: core, extended, discretionary
 - Generates properly formatted tsdoc.json with `$schema` and `supportForTags`
+- Sets `reportUnsupportedHtmlElements: true` in generated config
 - Optimizes output based on group selection (minimal config for all groups)
 - Handles config persistence based on environment (CI vs local)
 - Supports custom tag definitions beyond standard groups
@@ -559,7 +572,9 @@ await TsDocConfigBuilder.validateConfigFile({}, './tsdoc.json');
 **Location:** `src/plugins/utils/import-graph.ts`
 
 **Purpose:** Analyzes TypeScript import relationships to discover all files
-reachable from specified entry points. Used by TSDoc linting for file discovery.
+reachable from specified entry points. Used by TSDoc linting for file discovery
+and by bundleless mode (`runBundlessBuild()`) to discover all source files that
+need individual compilation.
 
 **Key Features:**
 
@@ -625,9 +640,11 @@ const result2 = ImportGraph.fromEntries(['./src/index.ts'], { rootDir: process.c
 |    1. Setup (read pkg, extract entries+exportPaths)         |
 |    2. Validate local paths (early fail-fast)                |
 |    3. TSDoc Lint (from apiModel.tsdoc.lint)                 |
-|    4. Bun.build() (bundle, format=esm|cjs)                 |
+|    4a. Bun.build() bundled (bundle!=false)                  |
+|    4b. Bun.build() bundleless (bundle=false, per-file)     |
 |    5. tsgo (generate declarations)                          |
-|    6. API Extractor (per-entry bundling + model merge)      |
+|    6a. API Extractor DTS rollup (bundle mode)               |
+|    6b. Copy raw .d.ts + API Extractor model (bundleless)   |
 |    7. Copy files (README, LICENSE, assets)                  |
 |    8. Transform files (user callback)                       |
 |    9. Virtual entries (bundle non-exported files)            |
@@ -648,7 +665,7 @@ const result2 = ImportGraph.fromEntries(['./src/index.ts'], { rootDir: process.c
 |    - LocalPathCopier: Copy artifacts to local paths         |
 |    - TsconfigResolver: Resolve tsconfig for virtual envs    |
 |    - TsDocConfigBuilder: Generate/validate tsdoc.json       |
-|    - ImportGraph: Trace TypeScript imports for TSDoc lint   |
+|    - ImportGraph: Trace imports for lint + bundleless mode  |
 |    - TSConfigs: Manage tsconfig for declaration gen         |
 |    - mergeApiModels(): Merge per-entry API model JSON       |
 +-------------------------------------------------------------+
@@ -687,6 +704,8 @@ bun run bun.config.ts  # Builds both
 - **Sequential target builds**: Targets are built one at a time
 - **No watch mode**: Full rebuild required on changes
 - **Workspace resolution limited**: Only checks `packages/<name>` paths
+- **Bundleless mode limitations**: No tree shaking in bundleless mode; all
+  reachable files from entry points are compiled and included in output
 
 ---
 
@@ -1007,13 +1026,20 @@ executeBuild(options, target)
          |
          v
 +----------------------------------------+
-| 5. BUN BUILD                           |
+| 5. BUN BUILD (bundle mode branching)   |
+|    IF bundle != false (default):       |
 |    - Convert entries to absolute paths |
 |    - format: esm (default) or cjs     |
 |    - target: bun (default), node, or  |
 |      browser via bunTarget option      |
 |    - Execute bundling                  |
 |    - Rename outputs to match entries   |
+|    IF bundle = false (bundleless):     |
+|    - ImportGraph.traceFromEntries()    |
+|    - Discover all reachable source     |
+|    - Bun.build() per discovered file   |
+|    - Strip src/ prefix from outputs    |
+|    - Preserve source directory layout  |
 |    - Track outputs for files array     |
 +----------------------------------------+
          |
@@ -1030,14 +1056,20 @@ executeBuild(options, target)
 +----------------------------------------+
 | 7. DECLARATION BUNDLING (multi-entry)  |
 |    - Validate API Extractor installed  |
+|    - Load TSDocConfigFile.loadForFolder|
 |    - Loop over ALL export entries      |
 |    - Run API Extractor per entry       |
+|    - enumMemberOrder: "preserve"       |
 |    - Bundle per-entry .d.ts files      |
+|      (or skip DTS rollup if bundleless)|
 |    - Collect per-entry API models      |
+|    - Collect TSDoc warnings w/ source  |
+|    - Collect forgotten exports w/ src  |
 |    - Merge models via mergeApiModels() |
 |    - Rewrite canonical refs for subs   |
+|    - Process TSDoc warnings (fail/log) |
 |    - Handle forgottenExports option    |
-|    - Generate tsdoc-metadata.json      |
+|    - tsdoc-metadata: main entry only   |
 |    - Generate tsconfig.json + tsdoc.json|
 |    - Fallback: copy unbundled .d.ts    |
 +----------------------------------------+
@@ -1165,6 +1197,10 @@ Default: `"throw"` in CI, `"error"` locally
 
 #### Phase 3: Bun Build
 
+The build mode is determined by `options.bundle` (default: `true`):
+
+**Bundle Mode (`bundle !== false`, default):**
+
 **Inputs:**
 
 - `BuildContext` with entries
@@ -1185,6 +1221,34 @@ Default: `"throw"` in CI, `"error"` locally
 5. Post-process: rename outputs to match entry names
 6. Clean up empty directories after renaming
 7. Add outputs to files array (excluding .map)
+
+**Bundleless Mode (`bundle: false`):**
+
+**Inputs:**
+
+- `BuildContext` with entries
+
+**Operations (via `runBundlessBuild()`):**
+
+1. Use `ImportGraph.traceFromEntries()` to discover all reachable source files
+   from entry points
+2. Build externals array from options
+3. Configure Bun.build() with ALL discovered files as entrypoints:
+   - Same target, format, sourcemap, and define options as bundle mode
+   - `packages: "external"`
+   - `naming: "[dir]/[name].[ext]"`
+4. Execute `Bun.build()` (compiles each file individually, no bundling)
+5. Post-process: strip `src/` prefix from output paths
+   (`src/utils/helper.ts` becomes `utils/helper.js`)
+6. Clean up empty `src/` directory after renaming
+7. Add outputs to files array (excluding .map)
+
+**Bundleless Mode Declaration Handling:**
+
+After tsgo generates raw `.d.ts` files, they are copied directly to the output
+directory without DTS rollup (no API Extractor declaration bundling). API
+Extractor still runs for `.api.json` generation only if `apiModel` is enabled,
+with `dtsRollup: { enabled: false }`.
 
 **Outputs:**
 
@@ -1220,6 +1284,7 @@ Default: `"throw"` in CI, `"error"` locally
 - `BuildContext` (with `entries`, `exportPaths`)
 - `tempDtsDir`: Directory with generated .d.ts files
 - `apiModel`: ApiModelOptions or boolean
+- `options`: `{ bundleless?: boolean }` (set when `bundle: false`)
 
 **Architecture:**
 
@@ -1228,26 +1293,47 @@ produces a per-entry bundled `.d.ts` file and optionally a per-entry API model J
 The per-entry models are then merged into a single Package with multiple EntryPoint
 members.
 
+In bundleless mode (`options.bundleless: true`), DTS rollup is disabled
+(`dtsRollup: { enabled: false }`) and API Extractor runs only for `.api.json`
+generation when `apiModel` is enabled.
+
 **Operations:**
 
 1. Validate API Extractor installed
 2. Filter to export entries only (skip `bin/` entries)
 3. Resolve API model configuration using `ApiModelConfigResolver`
 4. Resolve `forgottenExports` behavior (`"include"` local, `"error"` CI)
-5. For each export entry:
+5. Resolve `tsdoc.warnings` behavior (`"fail"` in CI, `"log"` locally, `"none"`)
+6. Load `TSDocConfigFile.loadForFolder(cwd)` from `@microsoft/tsdoc-config`
+   to respect `tsdoc.json` custom tag definitions (optional, falls back to defaults)
+7. For each export entry:
    a. Find declaration file via `resolveDtsPath()`
-   b. Configure API Extractor with entry-specific paths
-   c. Run API Extractor (per-entry `.d.ts` + optional temp API model)
-   d. Collect forgotten export messages
-   e. Read per-entry API model for merging
-6. Process collected forgotten exports (error/include/ignore)
-7. Merge per-entry API models via `mergeApiModels()`:
-   - Main entry (`"."`) keeps canonical reference as `@scope/package!`
-   - Sub-entries get rewritten references: `@scope/package/subpath!`
-   - All member canonical references recursively rewritten
-8. Generate resolved tsconfig.json using `TsconfigResolver`
-9. Generate tsdoc.json in output directory
-10. Handle failures by copying unbundled declarations
+   b. Configure API Extractor with entry-specific paths:
+      - `enumMemberOrder: "preserve"` (preserves source order of enum members)
+      - `dtsRollup`: enabled in bundle mode, disabled in bundleless mode
+      - `tsdocMetadata`: only generated for main entry (`entryName === "index"`
+        or single entry)
+   c. Pass loaded `tsdocConfigFile` to `ExtractorConfig.prepare()`
+   d. Run API Extractor (per-entry `.d.ts` + optional temp API model)
+   e. Collect TSDoc warnings with source location info (`sourceFilePath`,
+      `sourceFileLine`, `sourceFileColumn`) instead of suppressing them
+   f. Collect forgotten export messages with source location info
+   g. Read per-entry API model for merging
+8. Process collected TSDoc warnings:
+   - Separate first-party (project source) from third-party (node_modules)
+   - Third-party warnings always logged (never fail the build)
+   - First-party warnings respect `tsdoc.warnings` option:
+     - `"fail"`: throw error (default in CI)
+     - `"log"`: log as warnings (default locally)
+     - `"none"`: suppress entirely
+9. Process collected forgotten exports (error/include/ignore)
+10. Merge per-entry API models via `mergeApiModels()`:
+    - Main entry (`"."`) keeps canonical reference as `@scope/package!`
+    - Sub-entries get rewritten references: `@scope/package/subpath!`
+    - All member canonical references recursively rewritten
+11. Generate resolved tsconfig.json using `TsconfigResolver`
+12. Generate tsdoc.json in output directory
+13. Handle failures by copying unbundled declarations
 
 **Outputs:**
 
@@ -1256,9 +1342,9 @@ members.
 
 **Generated Files (when enabled):**
 
-- `<entry>.d.ts` - Per-entry bundled TypeScript declarations
+- `<entry>.d.ts` - Per-entry bundled TypeScript declarations (bundle mode only)
 - `<package>.api.json` - Merged API model with multiple EntryPoint members
-- `tsdoc-metadata.json` - TSDoc custom tag definitions
+- `tsdoc-metadata.json` - TSDoc custom tag definitions (main entry only)
 - `tsconfig.json` - Resolved tsconfig for virtual TypeScript environments
 - `tsdoc.json` - TSDoc tag configuration for documentation tools
 
@@ -1527,15 +1613,35 @@ Source .ts files
          |
          v
 +----------------------------------------+
+| Load TSDocConfigFile                   |
+|   TSDocConfigFile.loadForFolder(cwd)   |
+|   (optional, falls back to defaults)   |
++----------------------------------------+
+         |
+         v
++----------------------------------------+
 | Per-Entry API Extractor Loop           |
 |   For each export entry (skip bin/):   |
 |   - resolveDtsPath(sourcePath)         |
 |   - Configure API Extractor per entry  |
-|   - bundledDtsPath: <entry>.d.ts       |
-|   - perEntryApiModel: .tmp-<entry>.json|
+|   - enumMemberOrder: "preserve"        |
+|   - dtsRollup: enabled (bundle) or    |
+|     disabled (bundleless)              |
+|   - tsdocMetadata: main entry only     |
+|   - Pass tsdocConfigFile              |
 |   - Run Extractor.invoke()             |
-|   - Collect forgottenExport messages   |
+|   - Collect TSDoc warnings w/ source   |
+|   - Collect forgottenExport w/ source  |
 |   - Read per-entry model for merging   |
++----------------------------------------+
+         |
+         v
++----------------------------------------+
+| TSDoc warnings handling                |
+|   First-party vs third-party separated |
+|   "fail": throw (default in CI)        |
+|   "log": log warning (default local)   |
+|   "none": suppress entirely            |
 +----------------------------------------+
          |
          v
@@ -1574,9 +1680,10 @@ Source .ts files
 +----------------------------------------+
          |
          v
-    dist/{target}/<entry>.d.ts (per entry)
+    dist/{target}/<entry>.d.ts (per entry, bundle mode only)
+    dist/{target}/**/*.d.ts (bundleless: raw tsgo output)
     dist/{target}/<pkg>.api.json (merged, if apiModel)
-    dist/{target}/tsdoc-metadata.json (if apiModel)
+    dist/{target}/tsdoc-metadata.json (main entry only, if apiModel)
     dist/{target}/tsconfig.json (if apiModel)
     dist/{target}/tsdoc.json (if apiModel)
          |
@@ -1613,6 +1720,7 @@ interface BunLibraryBuilderOptions {
   // Output configuration
   targets?: BuildTarget[];            // ["dev", "npm"] default
   format?: "esm" | "cjs";            // Output module format (default: "esm")
+  bundle?: boolean;                   // Bundled (true) or bundleless (false) mode
   bunTarget?: "bun" | "node" | "browser"; // Bun.build() target (default: "bun")
   copyPatterns?: (string | CopyPatternConfig)[];
 
@@ -1637,8 +1745,14 @@ interface BunLibraryBuilderOptions {
 }
 ```
 
+**Default options** (from `BunLibraryBuilder.DEFAULT_OPTIONS`):
+
+- `apiModel: true` - API model generation enabled by default
+- `bundle: true` - Bundled output mode by default
+
 **Notable changes from previous versions:**
 
+- `bundle` option added (`true` default; `false` enables bundleless mode)
 - `tsdocLint` top-level option removed; lint is now at `apiModel.tsdoc.lint`
 - `format` option added (was hardcoded to `"esm"`)
 - `bunTarget` option added (was hardcoded to `"node"`, now defaults to `"bun"`)
@@ -1651,9 +1765,14 @@ interface BunLibraryBuilderOptions {
 | Source maps | `"linked"` | `"none"` |
 | Minify | `false` | `false` |
 | API model | `false` | Per option (default: `true`) |
+| DTS rollup | Per `bundle` option | Per `bundle` option |
 | Catalog resolution | No | Yes |
 | `private` field | `true` | Based on publishConfig |
 | Local path copying | No | Yes (non-CI only) |
+
+Note: When `bundle: false`, both targets use bundleless mode (individual file
+compilation with raw `.d.ts` files). DTS rollup via API Extractor is disabled,
+but API model (`.api.json`) generation still runs for the npm target.
 
 ### ApiModelOptions
 
@@ -1680,7 +1799,13 @@ npm builds generate API models by default. Set `apiModel: false` to disable.
 
 **Forgotten Exports:** Controls how API Extractor's `ae-forgotten-export` messages
 are handled. In CI, defaults to `"error"` (fails the build). Locally, defaults to
-`"include"` (logs as warnings). Use `"ignore"` to suppress entirely.
+`"include"` (logs as warnings). Use `"ignore"` to suppress entirely. Forgotten
+export warnings now include source location info (`sourceFilePath`,
+`sourceFileLine`, `sourceFileColumn`) for better debugging.
+
+**TSDoc Metadata (Main Entry Only):** `tsdoc-metadata.json` is generated only for
+the main entry point (`entryName === "index"` or when there is a single export
+entry). This prevents duplicate metadata files in multi-entry packages.
 
 #### apiModel.localPaths Feature
 
@@ -1723,7 +1848,7 @@ Parent directories of each path must exist. For example, if `localPaths`
 includes `../website/docs/api/my-package`, then `../website/docs/api` must
 exist. The final directory (`my-package`) will be created automatically.
 
-### TsDocOptions (with nested lint)
+### TsDocOptions (with nested lint and warnings)
 
 TSDoc configuration is shared between API model generation and lint validation.
 Configure once at `apiModel.tsdoc`, and lint picks up the same tag definitions.
@@ -1746,6 +1871,18 @@ interface TsDocLintOptions {
 ```
 
 **Configuration path:** `apiModel.tsdoc.lint`
+
+**TSDoc Warnings (`tsdoc.warnings`):** Controls how API Extractor TSDoc warnings
+are handled during declaration bundling. Warnings are collected with full source
+location info (`sourceFilePath`, `sourceFileLine`, `sourceFileColumn`) instead of
+being suppressed. They are separated into two categories:
+
+- **First-party warnings** (project source files): Respect the `warnings` option
+  - `"fail"` (default in CI): Throw an error and abort the build
+  - `"log"` (default locally): Log as warnings and continue
+  - `"none"`: Suppress entirely
+- **Third-party warnings** (node_modules): Always logged as warnings, never
+  fail the build regardless of the `warnings` setting
 
 **Example:**
 
@@ -1790,6 +1927,8 @@ interface VirtualEntryConfig {
 
 ### Bun Build Integration
 
+**Bundle mode** (`bundle !== false`, default):
+
 ```typescript
 const result = await Bun.build({
   entrypoints: absoluteEntryPaths,
@@ -1808,6 +1947,30 @@ const result = await Bun.build({
   },
   plugins: userPlugins,
 });
+```
+
+**Bundleless mode** (`bundle: false`):
+
+```typescript
+// Discover all reachable source files from entry points
+const graph = new ImportGraph({ rootDir: context.cwd });
+const traceResult = graph.traceFromEntries(entryPaths);
+
+const result = await Bun.build({
+  entrypoints: traceResult.files,  // All discovered source files
+  outdir: context.outdir,
+  target: context.options.bunTarget ?? "bun",
+  format: context.options.format ?? "esm",
+  splitting: false,
+  sourcemap: target === "dev" ? "linked" : "none",
+  minify: false,
+  external: externalPackages,
+  packages: "external",
+  naming: "[dir]/[name].[ext]",
+  define: { ... },
+  plugins: userPlugins,
+});
+// Post-process: strip src/ prefix from output paths
 ```
 
 ### tsgo Integration
@@ -1829,34 +1992,46 @@ API Extractor is invoked once per export entry point. Per-entry API models are
 then merged into a single Package with multiple EntryPoint members.
 
 ```typescript
+// Load tsdoc.json config for custom tag definitions
+const { TSDocConfigFile } = await import("@microsoft/tsdoc-config");
+const tsdocConfigFile = TSDocConfigFile.loadForFolder(context.cwd);
+
 // Per-entry invocation (runs in a loop over all export entries)
 const extractorConfig = ExtractorConfig.prepare({
   configObject: {
     projectFolder: cwd,
     mainEntryPointFilePath: perEntryDtsPath,
     compiler: { tsconfigFilePath },
-    dtsRollup: {
-      enabled: true,
-      untrimmedFilePath: perEntryBundledDtsPath,
-    },
+    enumMemberOrder: "preserve",
+    dtsRollup: isBundleless
+      ? { enabled: false }
+      : { enabled: true, untrimmedFilePath: perEntryBundledDtsPath },
     docModel: apiModelEnabled ? {
       enabled: true,
       apiJsonFilePath: perEntryApiModelPath, // Temp file
     } : { enabled: false },
+    tsdocMetadata: isMainEntry  // Only for "index" or single entry
+      ? { enabled: true, tsdocMetadataFilePath: ... }
+      : { enabled: false },
     bundledPackages: dtsBundledPackages,
   },
   packageJsonFullPath: join(cwd, "package.json"),
+  tsdocConfigFile,  // Pass loaded TSDocConfigFile
 });
 
 Extractor.invoke(extractorConfig, {
   localBuild: true,
   messageCallback: (message) => {
-    // Collect ae-forgotten-export messages for batch processing
+    // Collect TSDoc warnings with source location info
+    // Collect ae-forgotten-export messages with source location info
     // Suppress TypeScript version and signature change warnings
   },
 });
 
 // After all entries processed:
+// 1. Process TSDoc warnings (first-party vs third-party, fail/log/none)
+// 2. Process forgotten exports (error/include/ignore)
+// 3. Merge API models
 const merged = mergeApiModels({
   perEntryModels,
   packageName: '@scope/package',
@@ -1874,6 +2049,7 @@ const merged = mergeApiModels({
 
 - **@typescript/native-preview (tsgo)**: Fast declaration generation
 - **@microsoft/api-extractor**: Declaration bundling, API model generation
+- **@microsoft/tsdoc-config**: TSDocConfigFile loading for API Extractor
 - **typescript**: TypeScript compiler API for config parsing
 
 **TSDoc Validation:**
@@ -1974,7 +2150,18 @@ bun test --watch
 - **Remote caching**: Share build cache across CI runs
 - **Plugin system**: User-defined build phases
 
-**Recently Completed (feat/rslib-builder-alignment):**
+**Recently Completed (feat/support-tsx-files):**
+
+- `bundle: false` bundleless mode with `ImportGraph.traceFromEntries()` file discovery
+- TSDoc warnings collection with source location info and first-party/third-party separation
+- Forgotten exports source locations (`sourceFilePath`, `sourceFileLine`, `sourceFileColumn`)
+- `tsdoc-metadata.json` generated only for main entry
+- `enumMemberOrder: "preserve"` in API Extractor config
+- `reportUnsupportedHtmlElements: true` in TSDoc config
+- `BunLibraryBuilder.DEFAULT_OPTIONS` (`apiModel: true, bundle: true`)
+- `TSDocConfigFile.loadForFolder()` for API Extractor custom tag support
+
+**Previously Completed (feat/rslib-builder-alignment):**
 
 - Multi-entry declaration bundling (API Extractor per entry with model merging)
 - CJS output format support via `format` option
@@ -1999,12 +2186,34 @@ bun test --watch
 
 ---
 
-**Document Status:** Current - Fully documented including rslib-builder alignment:
-multi-entry API model merging, virtualEntries, format/bunTarget options, tsdocLint
-nesting under apiModel.tsdoc.lint, forgottenExports, TSDoc CI validation, and
-apiModel defaulting to enabled.
+**Document Status:** Current - Fully documented including bundleless mode,
+TSDoc warning collection with source locations, forgotten export source locations,
+tsdoc-metadata main entry restriction, enumMemberOrder preserve, TSDocConfigFile
+loading, and DEFAULT_OPTIONS on BunLibraryBuilder.
 
-**Recent Changes (feat/rslib-builder-alignment branch):**
+**Recent Changes (feat/support-tsx-files branch):**
+
+- `bundle: false` bundleless mode added to `BunLibraryBuilderOptions`; when enabled,
+  `runBundlessBuild()` uses `ImportGraph.traceFromEntries()` to discover files,
+  compiles individually via `Bun.build()`, and copies raw `.d.ts` files instead of
+  API Extractor DTS rollup
+- TSDoc warnings from API Extractor are now collected with source location info
+  (`sourceFilePath`, `sourceFileLine`, `sourceFileColumn`) and separated into
+  first-party vs third-party; respects `tsdoc.warnings` option (`"fail"` in CI,
+  `"log"` locally, `"none"` to suppress)
+- Forgotten export warnings now include `sourceFilePath`, `sourceFileLine`,
+  `sourceFileColumn` for better debugging
+- `tsdoc-metadata.json` generated only for main entry (`entryName === "index"` or
+  single export entry)
+- `enumMemberOrder: "preserve"` added to API Extractor config to preserve source
+  order of enum members
+- `reportUnsupportedHtmlElements: true` set in `TsDocConfigBuilder.buildConfigObject()`
+- `BunLibraryBuilder.DEFAULT_OPTIONS` static readonly property added with
+  `{ apiModel: true, bundle: true }`, merged in constructor
+- API Extractor now loads `tsdoc.json` via `TSDocConfigFile.loadForFolder()` from
+  `@microsoft/tsdoc-config` for custom tag definition support
+
+**Previous Changes (feat/rslib-builder-alignment branch):**
 
 - `exportPaths` field added to `ExtractedEntries` and `BuildContext` for tracking
   original package.json export keys

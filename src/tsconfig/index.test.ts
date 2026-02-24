@@ -173,12 +173,13 @@ describe("LibraryTSConfigFile", () => {
 		}
 	});
 
-	test("bundle method excludes tsx and cts files", () => {
+	test("bundle method includes tsx but excludes cts files", () => {
 		const bundled = NodeEcmaLib.bundle("npm");
 
 		if (bundled.include) {
+			const hasTsx = bundled.include.some((pattern) => pattern.includes(".tsx"));
+			expect(hasTsx).toBe(true);
 			for (const pattern of bundled.include) {
-				expect(pattern).not.toContain(".tsx");
 				expect(pattern).not.toContain(".cts");
 			}
 		}

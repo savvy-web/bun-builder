@@ -212,7 +212,7 @@ describe("TsDocConfigBuilder", () => {
 			const config = TsDocConfigBuilder.buildConfigObject();
 			expect(config.$schema).toBe("https://developer.microsoft.com/json-schemas/tsdoc/v0/tsdoc.schema.json");
 			expect(config.noStandardTags).toBe(false);
-			expect(config.reportUnsupportedHtmlElements).toBe(false);
+			expect(config.reportUnsupportedHtmlElements).toBe(true);
 		});
 
 		it("should not include tagDefinitions when all groups enabled", () => {
@@ -435,11 +435,11 @@ describe("TsDocConfigBuilder", () => {
 			expect(config.$schema).toBeDefined();
 		});
 
-		it("should set reportUnsupportedHtmlElements to false", async () => {
+		it("should set reportUnsupportedHtmlElements to true", async () => {
 			await TsDocConfigBuilder.writeConfigFile({}, tempDir);
 			const content = await readFile(join(tempDir, "tsdoc.json"), "utf-8");
 			const config = JSON.parse(content);
-			expect(config.reportUnsupportedHtmlElements).toBe(false);
+			expect(config.reportUnsupportedHtmlElements).toBe(true);
 		});
 
 		it("should validate instead of write in CI", async () => {

@@ -12,6 +12,7 @@
 		"emitDeclarationOnly": true,
 		"noEmit": false,
 		"moduleResolution": "bundler",
+		"exactOptionalPropertyTypes": true,
 		"noFallthroughCasesInSwitch": true,
 		"noImplicitOverride": true,
 		"noPropertyAccessFromIndexSignature": false,

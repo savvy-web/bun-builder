@@ -8,10 +8,11 @@ This document provides guidance for AI agents working on the
 Bun-based build system for modern ESM Node.js libraries. Provides `BunLibraryBuilder`
 API for TypeScript packages.
 
-- Bundled ESM builds with rolled-up types via Bun.build()
+- Bundled or bundleless ESM builds via Bun.build()
+- Rolled-up `.d.ts` (bundled) or raw `.d.ts` (bundleless) via tsgo + API Extractor
 - Multiple targets (dev and npm) with different optimizations
 - Automatic package.json transformation and Bun catalog resolution
-- TypeScript declarations via tsgo + API Extractor
+- TSDoc validation with source-location-aware warnings
 - Self-building (uses BunLibraryBuilder for its own build)
 
 ## Design Documentation
@@ -39,13 +40,18 @@ bun-builder/
 │   │   └── bun-library-builder.ts
 │   ├── hooks/                   # Build lifecycle orchestration
 │   │   └── build-lifecycle.ts
+│   ├── macros/                  # Bun compile-time macros
+│   │   └── version.ts
 │   ├── plugins/
 │   │   └── utils/               # Plugin utilities
 │   │       ├── catalog-resolver.ts
 │   │       ├── entry-extractor.ts
 │   │       ├── file-utils.ts
+│   │       ├── import-graph.ts
 │   │       ├── logger.ts
-│   │       └── package-json-transformer.ts
+│   │       ├── package-json-transformer.ts
+│   │       ├── tsconfig-resolver.ts
+│   │       └── tsdoc-config-builder.ts
 │   ├── tsconfig/                # TypeScript config templates
 │   ├── public/                  # Static files (tsconfig JSONs)
 │   └── types/                   # TypeScript type definitions
@@ -64,6 +70,8 @@ The main API for building Node.js libraries. Uses Bun.build() for bundling.
 
 **Location**: `src/builders/bun-library-builder.ts`
 
+**Defaults**: `apiModel: true`, `bundle: true` (see `DEFAULT_OPTIONS`).
+
 **Basic Usage**:
 
 ```typescript
@@ -79,12 +87,37 @@ export default BunLibraryBuilder.create({
 
 The build lifecycle in `src/hooks/build-lifecycle.ts` orchestrates:
 
-1. **Configuration Phase**: Merge options, detect entries from package.json
-2. **Pre-Build Phase**: TSDoc linting via ESLint
-3. **Bundle Phase**: Bun.build() with ESM output
-4. **Declaration Phase**: tsgo + API Extractor for .d.ts bundling
-5. **Package.json Phase**: Transform exports, resolve catalogs, generate files array
-6. **Copy Phase**: Copy README, LICENSE, public/*
+1. **Configuration Phase**: Merge `DEFAULT_OPTIONS` with user options, detect entries from package.json
+2. **Pre-Build Phase**: TSDoc linting via ESLint (files discovered by `ImportGraph`)
+3. **Bundle Phase**: `Bun.build()` with ESM output (bundled) or individual file compilation (bundleless)
+4. **Declaration Phase**: tsgo generates `.d.ts`; API Extractor rolls up (bundled) or raw `.d.ts` emitted (bundleless)
+5. **TSDoc/Forgotten Export Reporting**: Warnings collected with source location info and reported per `tsdoc.warnings` / `forgottenExports`
+6. **Package.json Phase**: Transform exports, resolve catalogs, generate files array
+7. **Copy Phase**: Copy README, LICENSE, public/*
+
+#### Bundleless Mode (`bundle: false`)
+
+When `bundle: false`, the build preserves source directory structure:
+
+- `ImportGraph.traceFromEntries()` discovers all reachable source files from entry points
+- Each file is compiled individually via `Bun.build()` with `packages: "external"`
+- Raw tsgo `.d.ts` files are emitted directly (no DTS rollup)
+- API Extractor still runs for `.api.json` generation if `apiModel` is enabled
+- `src/` prefix is stripped: `src/utils/helper.ts` becomes `utils/helper.js`
+
+#### TSDoc Warnings and Forgotten Exports
+
+API Extractor TSDoc warnings are collected with source file location info and
+reported after all entries are processed. Controlled via `apiModel.tsdoc.warnings`:
+`"fail"` (default in CI), `"log"` (default locally), `"none"`.
+
+Forgotten export warnings also include source location. Controlled via
+`apiModel.forgottenExports`: `"error"` (CI), `"include"` (local), `"ignore"`.
+
+#### API Extractor Configuration
+
+- `tsdoc.json` loaded via `TSDocConfigFile.loadForFolder()` for custom tag definitions
+- `enumMemberOrder: "preserve"` preserves source-order enum members in API model
 
 ### Build Targets
 
@@ -104,11 +137,19 @@ bun run bun.config.ts --env-mode npm
 
 ### Build Output
 
-This module produces bundled ESM output with rolled-up types:
+Output depends on the `bundle` option:
+
+**Bundled mode** (`bundle: true`, default):
 
 - Single-file outputs per export entry point
-- TypeScript declarations bundled via API Extractor
+- TypeScript declarations rolled up via API Extractor
 - Optimized for npm publishing and fast runtime loading
+
+**Bundleless mode** (`bundle: false`):
+
+- Source directory structure preserved in output
+- Raw `.d.ts` files emitted per source file (no DTS rollup)
+- API model still generated if `apiModel` is enabled
 
 ## Bun Catalog Protocol
 
