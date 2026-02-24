@@ -6,7 +6,6 @@
  * classes for common build operations, including file existence checking,
  * workspace root discovery, and tool binary path resolution.
  *
- * @packageDocumentation
  */
 
 import { existsSync, readFileSync } from "node:fs";

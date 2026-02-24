@@ -6,7 +6,6 @@
  * the BunLibraryBuilder. All types are designed to work together to provide a
  * type-safe build configuration experience.
  *
- * @packageDocumentation
  */
 
 import type { BunPlugin } from "bun";

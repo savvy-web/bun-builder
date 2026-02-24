@@ -6,7 +6,6 @@
  * to discover all files that are part of the public API. It uses the TypeScript
  * compiler API for accurate module resolution including path aliases.
  *
- * @packageDocumentation
  */
 
 import { dirname, isAbsolute, normalize, resolve } from "node:path";

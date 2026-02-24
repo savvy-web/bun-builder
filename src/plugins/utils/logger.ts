@@ -9,7 +9,6 @@
  * The module provides the {@link BuildLogger} class for all logging operations,
  * including environment detection, timing, formatting, and file table display.
  *
- * @packageDocumentation
  */
 
 import { stat } from "node:fs/promises";

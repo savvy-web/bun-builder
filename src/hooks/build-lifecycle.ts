@@ -17,12 +17,11 @@
  * 7. **Package.json Write**: Transforms and writes package.json
  * 8. **Local Path Copy** (optional): Copies API artifacts to local paths
  *
- * @packageDocumentation
  */
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readFile, rename as renameFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename as renameFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
 import type { BuildArtifact } from "bun";
 import { EntryExtractor } from "../plugins/utils/entry-extractor.js";
@@ -782,8 +781,7 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 			await mkdir(newDir, { recursive: true });
 
 			// Rename file
-			const { rename } = await import("node:fs/promises");
-			await rename(output.path, newPath);
+			await renameFile(output.path, newPath);
 
 			// Update output artifact
 			renamedOutputs.push({
@@ -796,7 +794,6 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 	}
 
 	// Clean up empty directories left after renaming
-	const { rmdir } = await import("node:fs/promises");
 	for (const output of result.outputs) {
 		const dir = dirname(output.path);
 		try {
@@ -924,12 +921,8 @@ export async function runBundlessBuild(context: BuildContext): Promise<{ outputs
 		}
 	}
 
-	// Clean up src/ subtree after renaming
-	try {
-		await rm(join(context.outdir, "src"), { recursive: true, force: true });
-	} catch {
-		// Directory doesn't exist, ignore
-	}
+	// Clean up src/ subtree after renaming (force: true handles non-existent paths)
+	await rm(join(context.outdir, "src"), { recursive: true, force: true });
 
 	logger.info(`Compiled ${renamedOutputs.length} file(s) in ${BuildLogger.formatTime(timer.elapsed())}`);
 
@@ -2002,24 +1995,6 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 				filesArray.add("!tsdoc.json");
 			}
 		}
-
-		// Persist tsdoc.json to project root for IDE support
-		if (target === "npm" && !lintEnabled) {
-			const unscopedName = FileSystemUtils.getUnscopedPackageName(packageJson.name ?? "package");
-			const apiModelConfig = ApiModelConfigResolver.resolve(options.apiModel, unscopedName);
-			const tsdocOptions = apiModelConfig.tsdoc ?? {};
-
-			if (TsDocConfigBuilder.shouldPersist(tsdocOptions.persistConfig)) {
-				try {
-					const persistPath = TsDocConfigBuilder.getConfigPath(tsdocOptions.persistConfig, cwd);
-					await TsDocConfigBuilder.writeConfigFile(tsdocOptions, persistPath);
-					logger.success(`Persisted tsdoc configuration to ${persistPath}`);
-				} catch (error) {
-					const errorMessage = error instanceof Error ? error.message : String(error);
-					logger.warn(`Failed to persist tsdoc.json: ${errorMessage}`);
-				}
-			}
-		}
 	} else {
 		// Bundle mode: use API Extractor for DTS rollup
 		const { bundledDtsPaths, apiModelPath, tsconfigPath, tsdocConfigPath, dtsFiles } = await runApiExtractor(
@@ -2055,24 +2030,24 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 			// tsdoc.json is excluded from npm publish (used by documentation tools)
 			filesArray.add("!tsdoc.json");
 		}
+	}
 
-		// Persist tsdoc.json to project root for IDE support
-		// Uses the shared tsdoc config from apiModel.tsdoc (which also drives lint)
-		// Only persist if lint didn't already persist (to avoid duplicate writes)
-		if (target === "npm" && !lintEnabled) {
-			const unscopedName = FileSystemUtils.getUnscopedPackageName(packageJson.name ?? "package");
-			const apiModelConfig = ApiModelConfigResolver.resolve(options.apiModel, unscopedName);
-			const tsdocOptions = apiModelConfig.tsdoc ?? {};
+	// Persist tsdoc.json to project root for IDE support
+	// Uses the shared tsdoc config from apiModel.tsdoc (which also drives lint)
+	// Only persist if lint didn't already persist (to avoid duplicate writes)
+	if (target === "npm" && !lintEnabled) {
+		const unscopedName = FileSystemUtils.getUnscopedPackageName(packageJson.name ?? "package");
+		const apiModelConfig = ApiModelConfigResolver.resolve(options.apiModel, unscopedName);
+		const tsdocOptions = apiModelConfig.tsdoc ?? {};
 
-			if (TsDocConfigBuilder.shouldPersist(tsdocOptions.persistConfig)) {
-				try {
-					const persistPath = TsDocConfigBuilder.getConfigPath(tsdocOptions.persistConfig, cwd);
-					await TsDocConfigBuilder.writeConfigFile(tsdocOptions, persistPath);
-					logger.success(`Persisted tsdoc configuration to ${persistPath}`);
-				} catch (error) {
-					const errorMessage = error instanceof Error ? error.message : String(error);
-					logger.warn(`Failed to persist tsdoc.json: ${errorMessage}`);
-				}
+		if (TsDocConfigBuilder.shouldPersist(tsdocOptions.persistConfig)) {
+			try {
+				const persistPath = TsDocConfigBuilder.getConfigPath(tsdocOptions.persistConfig, cwd);
+				await TsDocConfigBuilder.writeConfigFile(tsdocOptions, persistPath);
+				logger.success(`Persisted tsdoc configuration to ${persistPath}`);
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error);
+				logger.warn(`Failed to persist tsdoc.json: ${errorMessage}`);
 			}
 		}
 	}

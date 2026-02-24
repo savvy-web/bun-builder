@@ -6,7 +6,6 @@
  * package.json's `exports` and `bin` fields. It handles various export formats
  * and automatically maps JavaScript paths back to TypeScript sources.
  *
- * @packageDocumentation
  */
 
 import type { PackageJson } from "../../types/package-json.js";

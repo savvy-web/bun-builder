@@ -6,7 +6,6 @@
  * using Bun's native bundler. The `BunLibraryBuilder` class orchestrates the entire
  * build pipeline from entry point detection to package.json transformation.
  *
- * @packageDocumentation
  */
 
 import { parseArgs } from "node:util";

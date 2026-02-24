@@ -236,21 +236,16 @@ export class LibraryTSConfigFile extends TSConfigFile {
 			str.replace("${configDir}", "../../../../../.."),
 		);
 
-		// Filter include patterns for bundle mode
-		const include = config.include
-			?.filter((pattern) => {
-				// Only include src/**/*.ts, src/**/*.mts, types/*.ts, package.json, and public/**/*.json
-				return (
-					pattern.includes("/src/") ||
-					pattern.includes("/types/") ||
-					pattern.includes("/public/") ||
-					pattern.includes("package.json")
-				);
-			})
-			.filter((pattern) => {
-				// Exclude .cts files (CommonJS not supported in ESM bundles)
-				return !pattern.includes(".cts");
-			});
+		// Filter include patterns for bundle mode:
+		// Keep only src, types, public, and package.json patterns; exclude .cts (CommonJS)
+		const include = config.include?.filter((pattern) => {
+			const isRelevant =
+				pattern.includes("/src/") ||
+				pattern.includes("/types/") ||
+				pattern.includes("/public/") ||
+				pattern.includes("package.json");
+			return isRelevant && !pattern.includes(".cts");
+		});
 
 		return {
 			...config,

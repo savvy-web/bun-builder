@@ -11,7 +11,6 @@
  * - Resolving catalog and workspace references
  * - Sorting the final output
  *
- * @packageDocumentation
  */
 
 import sortPkg from "sort-package-json";
