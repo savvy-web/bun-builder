@@ -3,21 +3,24 @@ status: current
 module: bun-builder
 category: architecture
 created: 2026-01-26
-updated: 2026-02-24
-last-synced: 2026-02-24
+updated: 2026-02-25
+last-synced: 2026-02-25
 completeness: 100
 related: []
 dependencies: []
 sync-notes: |
-  Synced with feat/support-tsx-files branch changes:
-  - bundle: false bundleless mode (runBundlessBuild using ImportGraph.traceFromEntries)
-  - TSDoc warnings collection with source location info (warnings option: fail/log/none)
-  - Forgotten exports now include sourceFilePath/sourceFileLine/sourceFileColumn
-  - tsdoc-metadata.json generated only for main entry (index or single entry)
-  - enumMemberOrder: "preserve" added to API Extractor config
-  - reportUnsupportedHtmlElements: true in TsDocConfigBuilder
-  - BunLibraryBuilder.DEFAULT_OPTIONS static readonly (apiModel: true, bundle: true)
-  - TSDocConfigFile.loadForFolder() from @microsoft/tsdoc-config for API Extractor
+  Synced with feat/target-vs-mode branch changes:
+  - BuildTarget type renamed to BuildMode (values still "dev" | "npm")
+  - BuildResult.target renamed to BuildResult.mode
+  - BuildContext.target renamed to BuildContext.mode
+  - BunLibraryBuilder.DEFAULT_TARGETS renamed to DEFAULT_MODES
+  - resolveTargets() renamed to resolveModes()
+  - run(targets?) renamed to run(modes?), build(target) renamed to build(mode)
+  - executeBuild(options, target) renamed to executeBuild(options, mode)
+  - TransformPackageJsonFn context: { mode, target: PublishTarget | undefined, pkg }
+  - TransformFilesContext: .mode (BuildMode) + .target (PublishTarget | undefined)
+  - New PublishTarget interface for publish destination configuration
+  - PublishConfig.targets field added to package-json.ts
 ---
 
 # Bun Builder - Architecture
@@ -47,13 +50,14 @@ automatic entry detection, declaration bundling, and package.json transformation
 `@savvy-web/bun-builder` provides a high-level `BunLibraryBuilder` API that
 simplifies building TypeScript packages using Bun's native bundler. It
 handles automatic entry detection, declaration generation, package.json
-transformation, and multi-target builds.
+transformation, and multi-mode builds.
 
 **Key Design Principles:**
 
 - **Native performance**: Leverage Bun's native bundler for fast builds
 - **Automatic configuration**: Auto-detect entries from package.json exports
-- **Multi-target support**: Single configuration produces dev and npm builds
+- **Multi-mode builds**: Single configuration produces dev and npm build modes
+- **Publish target iteration**: `PublishTarget` type for per-registry customization
 - **Multi-format output**: ESM (default) or CJS via `format` option
 - **Bundleless mode**: `bundle: false` preserves source structure with individual file compilation
 - **Multi-entry declarations**: Per-entry API Extractor with merged API models
@@ -88,8 +92,8 @@ libraries with Bun.
 **Responsibilities:**
 
 - Parse and validate build options
-- Detect build target from `--env-mode` CLI argument
-- Orchestrate build lifecycle for each target
+- Detect build mode from `--env-mode` CLI argument
+- Orchestrate build lifecycle for each mode
 - Inject package version at compile time via Bun macro
 - Report build results and timing
 
@@ -108,11 +112,11 @@ class BunLibraryBuilder {
 
   // Instance methods
   constructor(options?: BunLibraryBuilderOptions)
-  async run(targets?: BuildTarget[]): Promise<BuildResult[]>
-  async build(target: BuildTarget): Promise<BuildResult>
+  async run(modes?: BuildMode[]): Promise<BuildResult[]>
+  async build(mode: BuildMode): Promise<BuildResult>
 }
 
-type BuildTarget = "dev" | "npm";
+type BuildMode = "dev" | "npm";
 ```
 
 The `DEFAULT_OPTIONS` static property is merged with user-provided options in the
@@ -150,7 +154,7 @@ user explicitly overrides them.
 ```typescript
 interface BuildContext {
   cwd: string;                          // Project root
-  target: BuildTarget;                  // "dev" or "npm"
+  mode: BuildMode;                      // "dev" or "npm"
   options: BunLibraryBuilderOptions;
   outdir: string;                       // e.g., "dist/npm"
   entries: Record<string, string>;      // Entry name -> source path
@@ -350,7 +354,7 @@ import { BuildLogger } from '@savvy-web/bun-builder';
 const logger = BuildLogger.createLogger("tsdoc-lint");
 logger.info("Validating...");  // info    [tsdoc-lint] Validating...
 
-// Environment-aware logger with target context
+// Environment-aware logger with mode context
 const envLogger = BuildLogger.createEnvLogger("npm");
 envLogger.info("Building...");  // info    [npm] Building...
 envLogger.global.info("Global");  // info    Global
@@ -626,16 +630,16 @@ const result2 = ImportGraph.fromEntries(['./src/index.ts'], { rootDir: process.c
                               |
                               v
 +-------------------------------------------------------------+
-|              Target Resolution Layer                        |
+|              Mode Resolution Layer                          |
 |    - Parse --env-mode from CLI                              |
 |    - Use options.targets or default to ["dev", "npm"]       |
-|    - Sequential target execution                            |
+|    - Sequential mode execution                              |
 +-------------------------------------------------------------+
                               |
                               v
 +-------------------------------------------------------------+
 |              Build Lifecycle Orchestration                  |
-|    executeBuild(options, target)                            |
+|    executeBuild(options, mode)                              |
 |                                                             |
 |    1. Setup (read pkg, extract entries+exportPaths)         |
 |    2. Validate local paths (early fail-fast)                |
@@ -649,7 +653,7 @@ const result2 = ImportGraph.fromEntries(['./src/index.ts'], { rootDir: process.c
 |    8. Transform files (user callback)                       |
 |    9. Virtual entries (bundle non-exported files)            |
 |   10. Write package.json (with files array)                 |
-|   11. Copy to local paths (npm target, non-CI only)         |
+|   11. Copy to local paths (npm mode, non-CI only)           |
 +-------------------------------------------------------------+
                               |
                               v
@@ -679,11 +683,11 @@ const result2 = ImportGraph.fromEntries(['./src/index.ts'], { rootDir: process.c
 +-------------------------------------------------------------+
 ```
 
-### Build Targets
+### Build Modes
 
-Two build targets with different optimizations:
+Two build modes with different optimizations:
 
-| Target | Source Maps | Minify | API Model | Output Directory | Private |
+| Mode | Source Maps | Minify | API Model | Output Directory | Private |
 | --- | --- | --- | --- | --- | --- |
 | `dev` | linked | false | false | `dist/dev/` | true |
 | `npm` | none | false | true* | `dist/npm/` | false** |
@@ -691,7 +695,7 @@ Two build targets with different optimizations:
 *API model enabled by default when `apiModel` is undefined (set `false` to disable)
 **Based on `publishConfig.access` in source package.json
 
-Targets selected via `--env-mode`:
+Modes selected via `--env-mode`:
 
 ```bash
 bun run bun.config.ts --env-mode dev
@@ -699,9 +703,32 @@ bun run bun.config.ts --env-mode npm
 bun run bun.config.ts  # Builds both
 ```
 
+### Publish Targets
+
+The `PublishTarget` type represents a single publish destination (e.g., npm
+registry, GitHub Packages). Publish targets are resolved from
+`publishConfig.targets` in package.json and passed to transform callbacks,
+enabling per-registry package.json customization.
+
+```typescript
+interface PublishTarget {
+  protocol: string;      // e.g., "https"
+  registry: string;      // e.g., "https://registry.npmjs.org/"
+  directory: string;     // Output directory for this target
+  access?: "public" | "restricted";
+  provenance?: boolean;
+  [key: string]: unknown;
+}
+```
+
+The `TransformPackageJsonFn` and `TransformFilesContext` receive the current
+`PublishTarget` (or `undefined` when no targets are configured). Currently
+`target` is passed as `undefined` in the build lifecycle; full publish target
+iteration is a planned future enhancement.
+
 ### Current Limitations
 
-- **Sequential target builds**: Targets are built one at a time
+- **Sequential mode builds**: Modes are built one at a time
 - **No watch mode**: Full rebuild required on changes
 - **Workspace resolution limited**: Only checks `packages/<name>` paths
 - **Bundleless mode limitations**: No tree shaking in bundleless mode; all
@@ -847,9 +874,9 @@ version management.
 
 #### Pattern 4: Strategy
 
-- **Where used:** Target-specific build configuration
+- **Where used:** Mode-specific build configuration
 - **Why used:** Different settings for dev vs npm builds
-- **Implementation:** Conditional logic in `executeBuild()` based on target
+- **Implementation:** Conditional logic in `executeBuild()` based on mode
 
 ### Constraints and Trade-offs
 
@@ -890,8 +917,8 @@ version management.
 
 **Responsibilities:**
 
-- Resolve build targets from CLI or options
-- Execute build lifecycle for each target
+- Resolve build modes from CLI or options
+- Execute build lifecycle for each mode
 - Aggregate and report results
 
 **Components:**
@@ -899,7 +926,7 @@ version management.
 - `BunLibraryBuilder.run()`
 - `executeBuild()`
 
-**Communication:** Sequential target execution
+**Communication:** Sequential mode execution
 
 #### Layer 3: Build Phases
 
@@ -984,7 +1011,7 @@ bun-builder/
 ### Phase Diagram
 
 ```text
-executeBuild(options, target)
+executeBuild(options, mode)
          |
          v
 +----------------------------------------+
@@ -1134,7 +1161,7 @@ executeBuild(options, target)
 **Inputs:**
 
 - `options`: BunLibraryBuilderOptions
-- `target`: "dev" | "npm"
+- `mode`: "dev" | "npm"
 
 **Operations:**
 
@@ -1234,7 +1261,7 @@ The build mode is determined by `options.bundle` (default: `true`):
    from entry points
 2. Build externals array from options
 3. Configure Bun.build() with ALL discovered files as entrypoints:
-   - Same target, format, sourcemap, and define options as bundle mode
+   - Same bunTarget, format, sourcemap, and define options as bundle mode
    - `packages: "external"`
    - `naming: "[dir]/[name].[ext]"`
 4. Execute `Bun.build()` (compiles each file individually, no bundling)
@@ -1379,7 +1406,8 @@ generation when `apiModel` is enabled.
 - `TransformFilesContext`:
   - `outputs`: Map of filename to content
   - `filesArray`: Set of files to publish
-  - `target`: Build target
+  - `mode`: Build mode (`BuildMode`)
+  - `target`: Publish target (`PublishTarget | undefined`)
 
 **Operations:**
 
@@ -1446,11 +1474,11 @@ virtualEntries: {
    - Resolve catalog references (npm only)
    - Apply build transformations
    - Call user transform
-3. Set `private: true` for dev target
+3. Set `private: true` for dev mode
 4. Add sorted files array
 5. Write to `<outdir>/package.json`
 
-#### Phase 11: Copy to Local Paths (npm target only)
+#### Phase 11: Copy to Local Paths (npm mode only)
 
 **Inputs:**
 
@@ -1459,7 +1487,7 @@ virtualEntries: {
 
 **Prerequisites:**
 
-- Build target is `npm`
+- Build mode is `npm`
 - Not running in CI environment
 - `apiModel.localPaths` array is non-empty
 
@@ -1575,12 +1603,13 @@ Source package.json
          |
          v
     User transform function (if provided)
+    (receives { mode, target: PublishTarget | undefined, pkg })
          |
          v
     Add files array from build
          |
          v
-    Write to dist/<target>/package.json
+    Write to dist/<mode>/package.json
 ```
 
 ### Declaration Generation Flow
@@ -1601,7 +1630,7 @@ Source .ts files
     tsgo --declaration --emitDeclarationOnly
          |
          v
-    .bun-builder/declarations/{target}/*.d.ts
+    .bun-builder/declarations/{mode}/*.d.ts
          |
          v
 +----------------------------------------+
@@ -1680,14 +1709,14 @@ Source .ts files
 +----------------------------------------+
          |
          v
-    dist/{target}/<entry>.d.ts (per entry, bundle mode only)
-    dist/{target}/**/*.d.ts (bundleless: raw tsgo output)
-    dist/{target}/<pkg>.api.json (merged, if apiModel)
-    dist/{target}/tsdoc-metadata.json (main entry only, if apiModel)
-    dist/{target}/tsconfig.json (if apiModel)
-    dist/{target}/tsdoc.json (if apiModel)
+    dist/{mode}/<entry>.d.ts (per entry, bundle mode only)
+    dist/{mode}/**/*.d.ts (bundleless: raw tsgo output)
+    dist/{mode}/<pkg>.api.json (merged, if apiModel)
+    dist/{mode}/tsdoc-metadata.json (main entry only, if apiModel)
+    dist/{mode}/tsconfig.json (if apiModel)
+    dist/{mode}/tsdoc.json (if apiModel)
          |
-         v (npm target, non-CI, localPaths configured)
+         v (npm mode, non-CI, localPaths configured)
 +----------------------------------------+
 | LocalPathCopier                        |
 |   - Copy API model to local paths      |
@@ -1718,7 +1747,7 @@ interface BunLibraryBuilderOptions {
   exportsAsIndexes?: boolean;         // Use dir/index.js structure
 
   // Output configuration
-  targets?: BuildTarget[];            // ["dev", "npm"] default
+  targets?: BuildMode[];              // ["dev", "npm"] default
   format?: "esm" | "cjs";            // Output module format (default: "esm")
   bundle?: boolean;                   // Bundled (true) or bundleless (false) mode
   bunTarget?: "bun" | "node" | "browser"; // Bun.build() target (default: "bun")
@@ -1758,7 +1787,7 @@ interface BunLibraryBuilderOptions {
 - `bunTarget` option added (was hardcoded to `"node"`, now defaults to `"bun"`)
 - `virtualEntries` option added for non-exported bundled files
 
-### Build Target Differences
+### Build Mode Differences
 
 | Option | dev | npm |
 | --- | --- | --- |
@@ -1770,9 +1799,9 @@ interface BunLibraryBuilderOptions {
 | `private` field | `true` | Based on publishConfig |
 | Local path copying | No | Yes (non-CI only) |
 
-Note: When `bundle: false`, both targets use bundleless mode (individual file
+Note: When `bundle: false`, both modes use bundleless mode (individual file
 compilation with raw `.d.ts` files). DTS rollup via API Extractor is disabled,
-but API model (`.api.json`) generation still runs for the npm target.
+but API model (`.api.json`) generation still runs for the npm mode.
 
 ### ApiModelOptions
 
@@ -1795,7 +1824,7 @@ interface TsDocMetadataOptions {
 
 **API Model Defaults to Enabled:** When `apiModel` is `undefined` (not specified
 in options), `ApiModelConfigResolver.resolve()` returns `enabled: true`. This means
-npm builds generate API models by default. Set `apiModel: false` to disable.
+npm mode builds generate API models by default. Set `apiModel: false` to disable.
 
 **Forgotten Exports:** Controls how API Extractor's `ae-forgotten-export` messages
 are handled. In CI, defaults to `"error"` (fails the build). Locally, defaults to
@@ -1821,7 +1850,7 @@ sites that need access to API models.
 
 **Behavior:**
 
-- Only runs for `npm` target
+- Only runs for `npm` mode
 - Skipped in CI environments (detected via `CI` or `GITHUB_ACTIONS` env vars)
 - Validates parent directories exist before build starts (fail-fast)
 - Creates destination directories if they don't exist
@@ -1936,7 +1965,7 @@ const result = await Bun.build({
   target: context.options.bunTarget ?? "bun",    // "bun", "node", or "browser"
   format: context.options.format ?? "esm",       // "esm" or "cjs"
   splitting: false,
-  sourcemap: target === "dev" ? "linked" : "none",
+  sourcemap: mode === "dev" ? "linked" : "none",
   minify: false,
   external: externalPackages,
   packages: "external",                          // Keep dependencies external
@@ -1962,7 +1991,7 @@ const result = await Bun.build({
   target: context.options.bunTarget ?? "bun",
   format: context.options.format ?? "esm",
   splitting: false,
-  sourcemap: target === "dev" ? "linked" : "none",
+  sourcemap: mode === "dev" ? "linked" : "none",
   minify: false,
   external: externalPackages,
   packages: "external",
@@ -2137,7 +2166,10 @@ bun test --watch
 
 - **Watch mode**: Rebuild on file changes
 - **Incremental declarations**: Cache tsgo output
-- **Parallel target builds**: Build dev and npm concurrently
+- **Parallel mode builds**: Build dev and npm concurrently
+- **Publish target iteration**: Iterate over `publishConfig.targets` in the build
+  lifecycle, passing each `PublishTarget` to transform callbacks for per-registry
+  package.json customization
 
 ### Phase 2: Medium-term
 
@@ -2150,7 +2182,15 @@ bun test --watch
 - **Remote caching**: Share build cache across CI runs
 - **Plugin system**: User-defined build phases
 
-**Recently Completed (feat/support-tsx-files):**
+**Recently Completed (feat/target-vs-mode):**
+
+- `BuildTarget` renamed to `BuildMode` with new `PublishTarget` type for publish destinations
+- Transform callbacks receive `{ mode, target: PublishTarget | undefined, pkg }`
+- `PublishConfig.targets` field for per-registry publish configuration
+- All internal APIs aligned: `resolveModes()`, `run(modes?)`, `build(mode)`,
+  `executeBuild(options, mode)`, `BuildContext.mode`, `BuildResult.mode`
+
+**Previously Completed (feat/support-tsx-files):**
 
 - `bundle: false` bundleless mode with `ImportGraph.traceFromEntries()` file discovery
 - TSDoc warnings collection with source location info and first-party/third-party separation
@@ -2186,12 +2226,28 @@ bun test --watch
 
 ---
 
-**Document Status:** Current - Fully documented including bundleless mode,
-TSDoc warning collection with source locations, forgotten export source locations,
-tsdoc-metadata main entry restriction, enumMemberOrder preserve, TSDocConfigFile
-loading, and DEFAULT_OPTIONS on BunLibraryBuilder.
+**Document Status:** Current - Fully documented including BuildMode/PublishTarget
+terminology split, bundleless mode, TSDoc warning collection with source locations,
+forgotten export source locations, tsdoc-metadata main entry restriction,
+enumMemberOrder preserve, TSDocConfigFile loading, and DEFAULT_OPTIONS on
+BunLibraryBuilder.
 
-**Recent Changes (feat/support-tsx-files branch):**
+**Recent Changes (feat/target-vs-mode branch):**
+
+- `BuildTarget` type renamed to `BuildMode` throughout; values unchanged ("dev" | "npm")
+- `BuildResult.target`, `BuildContext.target` renamed to `.mode`
+- `BunLibraryBuilder.DEFAULT_TARGETS` renamed to `DEFAULT_MODES`
+- `resolveTargets()` renamed to `resolveModes()`
+- `run(targets?)` -> `run(modes?)`, `build(target)` -> `build(mode)`
+- `executeBuild(options, target)` -> `executeBuild(options, mode)`
+- `TransformPackageJsonFn` context changed from `{ target: BuildTarget; pkg }` to
+  `{ mode: BuildMode; target: PublishTarget | undefined; pkg }`
+- `TransformFilesContext` now has `.mode` (`BuildMode`) + `.target` (`PublishTarget | undefined`)
+- New `PublishTarget` interface for publish destination configuration
+  (protocol, registry, directory, access, provenance)
+- `PublishConfig.targets?: JsonArray` field added to `package-json.ts`
+
+**Previous Changes (feat/support-tsx-files branch):**
 
 - `bundle: false` bundleless mode added to `BunLibraryBuilderOptions`; when enabled,
   `runBundlessBuild()` uses `ImportGraph.traceFromEntries()` to discover files,

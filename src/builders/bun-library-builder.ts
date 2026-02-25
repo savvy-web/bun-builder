@@ -13,7 +13,7 @@ import { executeBuild } from "../hooks/build-lifecycle.js";
 // biome-ignore lint/correctness/useImportExtensions: Bun macros require .ts extension
 import { getVersion } from "../macros/version.ts" with { type: "macro" };
 import { BuildLogger } from "../plugins/utils/logger.js";
-import type { BuildResult, BuildTarget, BunLibraryBuilderOptions } from "../types/builder-types.js";
+import type { BuildMode, BuildResult, BunLibraryBuilderOptions } from "../types/builder-types.js";
 
 /**
  * Bun-based library builder for modern ESM Node.js libraries.
@@ -30,12 +30,12 @@ import type { BuildResult, BuildTarget, BunLibraryBuilderOptions } from "../type
  * 6. **Package.json Transformation**: Updates paths and resolves catalog references
  * 7. **File Copying**: Copies README, LICENSE, and additional assets
  *
- * ## Build Targets
+ * ## Build Modes
  *
- * | Target | Source Maps | Minify | API Model | Output Directory |
- * |--------|-------------|--------|-----------|------------------|
- * | `dev`  | linked      | false  | false     | `dist/dev/`      |
- * | `npm`  | none        | false  | true      | `dist/npm/`      |
+ * | Mode  | Source Maps | Minify | API Model | Output Directory |
+ * |-------|-------------|--------|-----------|------------------|
+ * | `dev` | linked      | false  | false     | `dist/dev/`      |
+ * | `npm` | none        | false  | true      | `dist/npm/`      |
  *
  * ## Usage Patterns
  *
@@ -61,8 +61,8 @@ import type { BuildResult, BuildTarget, BunLibraryBuilderOptions } from "../type
  *   dtsBundledPackages: ['type-fest'],
  *   apiModel: true,
  *   tsdocLint: true,
- *   transform({ target, pkg }) {
- *     if (target === 'npm') {
+ *   transform({ mode, pkg }) {
+ *     if (mode === 'npm') {
  *       delete pkg.devDependencies;
  *     }
  *     return pkg;
@@ -81,7 +81,7 @@ import type { BuildResult, BuildTarget, BunLibraryBuilderOptions } from "../type
  * # Build for npm publishing
  * bun run bun.config.ts --env-mode npm
  *
- * # Build all targets (default)
+ * # Build all modes (default)
  * bun run bun.config.ts
  * ```
  *
@@ -115,11 +115,11 @@ export class BunLibraryBuilder {
 	private static readonly VERSION: string = getVersion();
 
 	/**
-	 * Default build targets when none are specified.
+	 * Default build modes when none are specified.
 	 *
 	 * @internal
 	 */
-	private static readonly DEFAULT_TARGETS: BuildTarget[] = ["dev", "npm"];
+	private static readonly DEFAULT_MODES: BuildMode[] = ["dev", "npm"];
 
 	/**
 	 * Default options applied to all builds.
@@ -171,13 +171,13 @@ export class BunLibraryBuilder {
 	 * instantiation and execution in a single call, making it ideal for use
 	 * in build configuration files.
 	 *
-	 * The method parses command-line arguments to determine which targets to build:
-	 * - `--env-mode dev`: Build only the development target
-	 * - `--env-mode npm`: Build only the npm target
-	 * - No flag: Build all targets specified in options (defaults to both)
+	 * The method parses command-line arguments to determine which modes to build:
+	 * - `--env-mode dev`: Build only the development mode
+	 * - `--env-mode npm`: Build only the npm mode
+	 * - No flag: Build all modes specified in options (defaults to both)
 	 *
 	 * @param options - Builder configuration options
-	 * @returns A promise resolving to an array of build results, one per target
+	 * @returns A promise resolving to an array of build results, one per mode
 	 *
 	 * @example
 	 * Basic usage in bun.config.ts:
@@ -206,20 +206,20 @@ export class BunLibraryBuilder {
 	}
 
 	/**
-	 * Executes the build for specified targets.
+	 * Executes the build for specified modes.
 	 *
 	 * @remarks
-	 * Runs the complete build pipeline for each target sequentially.
-	 * If no targets are specified, determines targets from:
+	 * Runs the complete build pipeline for each mode sequentially.
+	 * If no modes are specified, determines modes from:
 	 * 1. Command-line `--env-mode` argument
 	 * 2. `targets` option in builder configuration
 	 * 3. Defaults to `["dev", "npm"]`
 	 *
-	 * @param targets - Build targets to execute. If not specified, uses CLI args or defaults.
-	 * @returns Promise resolving to an array of build results, one per target
+	 * @param modes - Build modes to execute. If not specified, uses CLI args or defaults.
+	 * @returns Promise resolving to an array of build results, one per mode
 	 *
 	 * @example
-	 * Build specific targets programmatically:
+	 * Build specific modes programmatically:
 	 * ```typescript
 	 * import type { BuildResult } from '@savvy-web/bun-builder';
 	 * import { BunLibraryBuilder } from '@savvy-web/bun-builder';
@@ -228,35 +228,35 @@ export class BunLibraryBuilder {
 	 * const results: BuildResult[] = await builder.run(['npm']);
 	 * ```
 	 */
-	async run(targets?: BuildTarget[]): Promise<BuildResult[]> {
+	async run(modes?: BuildMode[]): Promise<BuildResult[]> {
 		const logger = BuildLogger.createLogger("bun-builder");
 		const timer = BuildLogger.createTimer();
 
 		// Print banner with version (embedded at compile time)
 		BuildLogger.printBanner(BunLibraryBuilder.VERSION);
 
-		// Determine targets from args or options
-		const resolvedTargets = targets ?? this.resolveTargets();
+		// Determine modes from args or options
+		const resolvedModes = modes ?? this.resolveModes();
 
-		logger.info(`Building targets: ${resolvedTargets.join(", ")}`);
+		logger.info(`Building modes: ${resolvedModes.join(", ")}`);
 
 		const results: BuildResult[] = [];
 
-		for (const target of resolvedTargets) {
+		for (const mode of resolvedModes) {
 			try {
-				const result = await executeBuild(this.options, target);
+				const result = await executeBuild(this.options, mode);
 				results.push(result);
 
 				if (!result.success) {
-					logger.error(`Build failed for target: ${target}`);
+					logger.error(`Build failed for mode: ${mode}`);
 				}
 			} catch (error) {
 				const errorObj = error instanceof Error ? error : new Error(String(error));
-				logger.error(`Build error for target ${target}: ${errorObj.message}`);
+				logger.error(`Build error for mode ${mode}: ${errorObj.message}`);
 				results.push({
 					success: false,
-					target,
-					outdir: `dist/${target}`,
+					mode,
+					outdir: `dist/${mode}`,
 					outputs: [],
 					duration: 0,
 					errors: [errorObj],
@@ -271,22 +271,22 @@ export class BunLibraryBuilder {
 		if (failedCount > 0) {
 			logger.error(`Build completed with ${failedCount} failure(s)`);
 		} else {
-			logger.ready(`Built ${results.length} target(s) in ${BuildLogger.formatTime(timer.elapsed())}`);
+			logger.ready(`Built ${results.length} mode(s) in ${BuildLogger.formatTime(timer.elapsed())}`);
 		}
 
 		return results;
 	}
 
 	/**
-	 * Builds a single target.
+	 * Builds a single mode.
 	 *
 	 * @remarks
-	 * Lower-level method for building a specific target without the
+	 * Lower-level method for building a specific mode without the
 	 * banner, logging, or summary output. Useful when integrating
 	 * the builder into custom build pipelines.
 	 *
-	 * @param target - The build target to execute
-	 * @returns Promise resolving to the build result for the specified target
+	 * @param mode - The build mode to execute
+	 * @returns Promise resolving to the build result for the specified mode
 	 *
 	 * @example
 	 * ```typescript
@@ -301,12 +301,12 @@ export class BunLibraryBuilder {
 	 * }
 	 * ```
 	 */
-	async build(target: BuildTarget): Promise<BuildResult> {
-		return executeBuild(this.options, target);
+	async build(mode: BuildMode): Promise<BuildResult> {
+		return executeBuild(this.options, mode);
 	}
 
 	/**
-	 * Resolves build targets from command-line arguments or options.
+	 * Resolves build modes from command-line arguments or options.
 	 *
 	 * @remarks
 	 * Resolution priority:
@@ -314,11 +314,11 @@ export class BunLibraryBuilder {
 	 * 2. `targets` option from builder configuration
 	 * 3. Default: `["dev", "npm"]`
 	 *
-	 * @returns Array of build targets to execute
+	 * @returns Array of build modes to execute
 	 *
 	 * @internal
 	 */
-	private resolveTargets(): BuildTarget[] {
+	private resolveModes(): BuildMode[] {
 		// Check for --env-mode argument
 		try {
 			const { values } = parseArgs({
@@ -340,8 +340,8 @@ export class BunLibraryBuilder {
 			// Ignore parse errors
 		}
 
-		// Use options or default to both targets
-		return this.options.targets ?? BunLibraryBuilder.DEFAULT_TARGETS;
+		// Use options or default to both modes
+		return this.options.targets ?? BunLibraryBuilder.DEFAULT_MODES;
 	}
 }
 
@@ -350,11 +350,12 @@ export class BunLibraryBuilder {
  */
 export type {
 	ApiModelOptions,
+	BuildMode,
 	BuildResult,
-	BuildTarget,
 	BunLibraryBuilderOptions,
 	CopyPatternConfig,
 	EntryPoints,
+	PublishTarget,
 	TransformFilesCallback,
 	TransformFilesContext,
 	TransformPackageJsonFn,

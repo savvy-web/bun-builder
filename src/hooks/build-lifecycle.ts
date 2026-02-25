@@ -33,8 +33,8 @@ import { PackageJsonTransformer } from "../plugins/utils/package-json-transforme
 import { TsDocConfigBuilder } from "../plugins/utils/tsdoc-config-builder.js";
 import type {
 	ApiModelOptions,
+	BuildMode,
 	BuildResult,
-	BuildTarget,
 	BunLibraryBuilderOptions,
 	CopyPatternConfig,
 	TsDocOptions,
@@ -297,7 +297,7 @@ export class ApiModelConfigResolver {
  * Context passed to build lifecycle hooks.
  *
  * @remarks
- * This context is created at the start of each target build and passed through
+ * This context is created at the start of each mode build and passed through
  * all build phases. It contains all the information needed to execute each phase.
  *
  * @internal
@@ -313,9 +313,9 @@ export interface BuildContext {
 	cwd: string;
 
 	/**
-	 * The build target being processed.
+	 * The build mode being processed.
 	 */
-	target: BuildTarget;
+	mode: BuildMode;
 
 	/**
 	 * Resolved builder options.
@@ -635,7 +635,7 @@ export async function runTsDocLint(context: BuildContext, options: ResolvedLintO
  * @internal
  */
 export async function runBunBuild(context: BuildContext): Promise<{ outputs: BuildArtifact[]; success: boolean }> {
-	const logger = BuildLogger.createEnvLogger(context.target);
+	const logger = BuildLogger.createEnvLogger(context.mode);
 	const timer = BuildLogger.createTimer();
 
 	logger.info("build started...");
@@ -666,7 +666,7 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 			target: context.options.bunTarget ?? "bun",
 			format: context.options.format ?? "esm",
 			splitting: false,
-			sourcemap: context.target === "dev" ? "linked" : "none",
+			sourcemap: context.mode === "dev" ? "linked" : "none",
 			minify: false,
 			external,
 			// Use "external" to keep dependencies external (like RSLib's autoExternal)
@@ -826,7 +826,7 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
  * @internal
  */
 export async function runBundlessBuild(context: BuildContext): Promise<{ outputs: BuildArtifact[]; success: boolean }> {
-	const logger = BuildLogger.createEnvLogger(context.target);
+	const logger = BuildLogger.createEnvLogger(context.mode);
 	const timer = BuildLogger.createTimer();
 
 	logger.info("bundleless build started...");
@@ -870,7 +870,7 @@ export async function runBundlessBuild(context: BuildContext): Promise<{ outputs
 			target: context.options.bunTarget ?? "bun",
 			format: context.options.format ?? "esm",
 			splitting: false,
-			sourcemap: context.target === "dev" ? "linked" : "none",
+			sourcemap: context.mode === "dev" ? "linked" : "none",
 			minify: false,
 			external,
 			packages: "external",
@@ -947,7 +947,7 @@ export async function runBundlessBuild(context: BuildContext): Promise<{ outputs
  * @internal
  */
 export async function runTsgoGeneration(context: BuildContext, tempDtsDir: string): Promise<boolean> {
-	const logger = BuildLogger.createEnvLogger(context.target);
+	const logger = BuildLogger.createEnvLogger(context.mode);
 	const timer = BuildLogger.createTimer();
 
 	logger.info("Generating declaration files...");
@@ -967,7 +967,7 @@ export async function runTsgoGeneration(context: BuildContext, tempDtsDir: strin
 
 	// Use the existing TSConfigs system to create a properly configured temp tsconfig
 	const { TSConfigs } = await import("../tsconfig/index.js");
-	const tempTsconfigPath = TSConfigs.node.ecma.lib.writeBundleTempConfig(context.target);
+	const tempTsconfigPath = TSConfigs.node.ecma.lib.writeBundleTempConfig(context.mode);
 
 	// Run tsgo with declaration generation flags
 	// The temp config has emitDeclarationOnly: false, so we override via CLI
@@ -1031,7 +1031,7 @@ export async function runTsgoGeneration(context: BuildContext, tempDtsDir: strin
  * @internal
  */
 async function copyUnbundledDeclarations(context: BuildContext, tempDtsDir: string): Promise<{ dtsFiles: string[] }> {
-	const logger = BuildLogger.createEnvLogger(context.target);
+	const logger = BuildLogger.createEnvLogger(context.mode);
 
 	// Find all .d.ts files in the temp directory using Bun.Glob
 	const dtsGlob = new Bun.Glob("**/*.d.ts");
@@ -1223,7 +1223,7 @@ function formatWarning(warning: WarningWithLocation, cwd: string): string {
  *
  * @param context - The build context
  * @param tempDtsDir - Directory containing generated declaration files
- * @param apiModel - API model generation options (only for npm target)
+ * @param apiModel - API model generation options (only for npm mode)
  * @returns Object containing paths to bundled declarations, API model, etc.
  *
  * @internal
@@ -1241,7 +1241,7 @@ export async function runApiExtractor(
 	tsdocConfigPath?: string;
 	dtsFiles?: string[];
 }> {
-	const logger = BuildLogger.createEnvLogger(context.target);
+	const logger = BuildLogger.createEnvLogger(context.mode);
 	const timer = BuildLogger.createTimer();
 
 	// Validate API Extractor is installed
@@ -1572,12 +1572,12 @@ export async function runApiExtractor(
  *
  * @remarks
  * Applies the following transformations:
- * - Resolves `catalog:` and `workspace:` references (npm target only)
+ * - Resolves `catalog:` and `workspace:` references (npm mode only)
  * - Transforms export paths from TypeScript to JavaScript
  * - Strips source directory prefixes
  * - Removes `publishConfig` and `scripts` fields
  * - Applies user-defined transform function
- * - Sets `private: true` for dev target
+ * - Sets `private: true` for dev mode
  * - Adds the `files` array
  *
  * @param context - The build context
@@ -1586,12 +1586,12 @@ export async function runApiExtractor(
  * @internal
  */
 export async function writePackageJson(context: BuildContext, filesArray: Set<string>): Promise<void> {
-	const isProduction = context.target === "npm";
+	const isProduction = context.mode === "npm";
 
 	// Build the user transform function
 	const userTransform = context.options.transform;
 	const transformFn = userTransform
-		? (pkg: PackageJson): PackageJson => userTransform({ target: context.target, pkg })
+		? (pkg: PackageJson): PackageJson => userTransform({ mode: context.mode, target: undefined, pkg })
 		: undefined;
 
 	const transformed = await PackageJsonTransformer.build(context.packageJson, {
@@ -1602,8 +1602,8 @@ export async function writePackageJson(context: BuildContext, filesArray: Set<st
 		...(transformFn !== undefined ? { transform: transformFn } : {}),
 	});
 
-	// Set private flag for dev target
-	if (context.target === "dev") {
+	// Set private flag for dev mode
+	if (context.mode === "dev") {
 		transformed.private = true;
 	}
 
@@ -1630,7 +1630,7 @@ export async function writePackageJson(context: BuildContext, filesArray: Set<st
  * @internal
  */
 export async function copyFiles(context: BuildContext, patterns: (string | CopyPatternConfig)[]): Promise<string[]> {
-	const logger = BuildLogger.createEnvLogger(context.target);
+	const logger = BuildLogger.createEnvLogger(context.mode);
 	const copiedFiles: string[] = [];
 
 	for (const pattern of patterns) {
@@ -1701,7 +1701,7 @@ interface CopyFileDescriptor {
  * It is used to support documentation generation workflows where artifacts need
  * to be available outside the standard build output directory.
  *
- * The copier only operates during `npm` target builds and is skipped in CI
+ * The copier only operates during `npm` mode builds and is skipped in CI
  * environments to avoid side effects during automated builds.
  *
  * @internal
@@ -1751,7 +1751,7 @@ export class LocalPathCopier {
 	 * @param localPaths - Array of relative paths to copy artifacts to
 	 */
 	async copyToLocalPaths(localPaths: string[]): Promise<void> {
-		const logger = BuildLogger.createEnvLogger(this.context.target);
+		const logger = BuildLogger.createEnvLogger(this.context.mode);
 
 		for (const localPath of localPaths) {
 			const resolvedPath = join(this.context.cwd, localPath);
@@ -1831,7 +1831,7 @@ export class LocalPathCopier {
 }
 
 /**
- * Executes the complete build lifecycle for a single target.
+ * Executes the complete build lifecycle for a single build mode.
  *
  * @remarks
  * This is the main orchestration function that runs all build phases in sequence:
@@ -1843,18 +1843,18 @@ export class LocalPathCopier {
  * 5. **Copy Files**: Copy additional assets to output
  * 6. **Transform Files**: Run user-defined post-processing (if provided)
  * 7. **Write package.json**: Transform and write final package.json
- * 8. **Copy to local paths**: Copy artifacts to local paths (npm target, non-CI only)
+ * 8. **Copy to local paths**: Copy artifacts to local paths (npm mode, non-CI only)
  *
  * @param options - Builder configuration options
- * @param target - The build target to execute
+ * @param mode - The build mode to execute
  * @returns Build result containing success status, outputs, and timing
  *
  * @internal
  */
-export async function executeBuild(options: BunLibraryBuilderOptions, target: BuildTarget): Promise<BuildResult> {
+export async function executeBuild(options: BunLibraryBuilderOptions, mode: BuildMode): Promise<BuildResult> {
 	const cwd = process.cwd();
-	const outdir = join(cwd, "dist", target);
-	const logger = BuildLogger.createEnvLogger(target);
+	const outdir = join(cwd, "dist", mode);
+	const logger = BuildLogger.createEnvLogger(mode);
 	const timer = BuildLogger.createTimer();
 
 	// Read package.json
@@ -1875,7 +1875,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 		logger.error("No entry points found in package.json");
 		return {
 			success: false,
-			target,
+			mode,
 			outdir,
 			outputs: [],
 			duration: timer.elapsed(),
@@ -1892,7 +1892,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 
 	const context: BuildContext = {
 		cwd,
-		target,
+		mode,
 		options,
 		outdir,
 		entries,
@@ -1902,8 +1902,8 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 	};
 
 	// Validate apiModel.localPaths early to fail fast before expensive build operations.
-	// Only validates for npm target and non-CI environments where local copying occurs.
-	if (target === "npm" && !BuildLogger.isCI()) {
+	// Only validates for npm mode and non-CI environments where local copying occurs.
+	if (mode === "npm" && !BuildLogger.isCI()) {
 		const unscopedName = FileSystemUtils.getUnscopedPackageName(packageJson.name ?? "package");
 		const apiModelConfig = ApiModelConfigResolver.resolve(options.apiModel, unscopedName);
 
@@ -1942,7 +1942,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 	if (!success) {
 		return {
 			success: false,
-			target,
+			mode,
 			outdir,
 			outputs: [],
 			duration: timer.elapsed(),
@@ -1963,7 +1963,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 	}
 
 	// Phase 3: Declaration generation
-	const tempDtsDir = join(cwd, ".bun-builder", "declarations", target);
+	const tempDtsDir = join(cwd, ".bun-builder", "declarations", mode);
 	await rm(tempDtsDir, { recursive: true, force: true });
 	await mkdir(tempDtsDir, { recursive: true });
 
@@ -1978,7 +1978,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 		}
 
 		// In bundleless mode, still run API Extractor for .api.json only if apiModel is enabled
-		if (target === "npm" && options.apiModel !== false) {
+		if (mode === "npm" && options.apiModel !== false) {
 			const {
 				apiModelPath,
 				tsconfigPath: tscPath,
@@ -2000,7 +2000,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 		const { bundledDtsPaths, apiModelPath, tsconfigPath, tsdocConfigPath, dtsFiles } = await runApiExtractor(
 			context,
 			tempDtsDir,
-			target === "npm" ? options.apiModel : undefined,
+			mode === "npm" ? options.apiModel : undefined,
 		);
 
 		if (bundledDtsPaths) {
@@ -2035,7 +2035,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 	// Persist tsdoc.json to project root for IDE support
 	// Uses the shared tsdoc config from apiModel.tsdoc (which also drives lint)
 	// Only persist if lint didn't already persist (to avoid duplicate writes)
-	if (target === "npm" && !lintEnabled) {
+	if (mode === "npm" && !lintEnabled) {
 		const unscopedName = FileSystemUtils.getUnscopedPackageName(packageJson.name ?? "package");
 		const apiModelConfig = ApiModelConfigResolver.resolve(options.apiModel, unscopedName);
 		const tsdocOptions = apiModelConfig.tsdoc ?? {};
@@ -2086,14 +2086,15 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 		await options.transformFiles({
 			outputs: outputsMap,
 			filesArray,
-			target,
+			mode,
+			target: undefined,
 		});
 	}
 
 	// Phase 7: Virtual entries
 	const virtualEntries = options.virtualEntries ?? {};
 	if (Object.keys(virtualEntries).length > 0) {
-		const virtualLogger = BuildLogger.createEnvLogger(target);
+		const virtualLogger = BuildLogger.createEnvLogger(mode);
 		const virtualTimer = BuildLogger.createTimer();
 
 		// Group virtual entries by format
@@ -2192,10 +2193,10 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 	await writePackageJson(context, filesArray);
 	filesArray.add("package.json");
 
-	// Phase 9: Copy API artifacts to local paths (npm target only, skip in CI)
+	// Phase 9: Copy API artifacts to local paths (npm mode only, skip in CI)
 	// This enables documentation workflows where API models need to be available
 	// in directories outside the standard build output.
-	if (target === "npm" && !BuildLogger.isCI()) {
+	if (mode === "npm" && !BuildLogger.isCI()) {
 		const unscopedName = FileSystemUtils.getUnscopedPackageName(packageJson.name ?? "package");
 		const apiModelConfig = ApiModelConfigResolver.resolve(options.apiModel, unscopedName);
 
@@ -2217,11 +2218,11 @@ export async function executeBuild(options: BunLibraryBuilderOptions, target: Bu
 
 	// Print file table
 	const fileInfo = await BuildLogger.collectFileInfo(outdir, sortedFiles);
-	BuildLogger.printFileTable(fileInfo, outdir, `(${target})`);
+	BuildLogger.printFileTable(fileInfo, outdir, `(${mode})`);
 
 	return {
 		success: true,
-		target,
+		mode,
 		outdir,
 		outputs: outputs.map((o) => o.path),
 		duration: timer.elapsed(),

@@ -330,6 +330,18 @@ export namespace PackageJson {
 		 * @defaultValue `'latest'`
 		 */
 		tag?: string;
+		/**
+		 * Publish targets for multi-registry publishing.
+		 *
+		 * @remarks
+		 * Each target describes a publish destination. The builder's transform
+		 * callback is invoked once per target, allowing per-registry package.json
+		 * customization.
+		 *
+		 * Each element is a JSON object with string keys. Well-known properties
+		 * include `protocol`, `registry`, `directory`, `access`, and `provenance`.
+		 */
+		targets?: JsonArray;
 	}
 
 	/**

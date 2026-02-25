@@ -56,15 +56,15 @@ export interface VirtualEntryConfig {
 }
 
 /**
- * Build target environment for library output.
+ * Build mode environment for library output.
  *
  * @remarks
- * Each target produces different output optimizations:
+ * Each mode produces different output optimizations:
  *
- * | Target | Source Maps | Minify | API Model | Output Directory |
- * |--------|-------------|--------|-----------|------------------|
- * | `dev`  | linked      | false  | false     | `dist/dev/`      |
- * | `npm`  | none        | false  | true      | `dist/npm/`      |
+ * | Mode  | Source Maps | Minify | API Model | Output Directory |
+ * |-------|-------------|--------|-----------|------------------|
+ * | `dev` | linked      | false  | false     | `dist/dev/`      |
+ * | `npm` | none        | false  | true      | `dist/npm/`      |
  *
  * - **`dev`**: Development build with linked source maps for debugging.
  *   Output is marked as private to prevent accidental publishing.
@@ -72,25 +72,68 @@ export interface VirtualEntryConfig {
  *   API model generation and catalog reference resolution.
  *
  * @example
- * Specifying a single target via CLI:
+ * Specifying a single mode via CLI:
  * ```bash
  * bun run bun.config.ts --env-mode dev
  * bun run bun.config.ts --env-mode npm
  * ```
  *
  * @example
- * Specifying targets in builder options:
+ * Specifying modes in builder options:
  * ```typescript
  * import { BunLibraryBuilder } from '@savvy-web/bun-builder';
  *
  * export default BunLibraryBuilder.create({
- *   targets: ['npm'], // Only build npm target
+ *   targets: ['npm'], // Only build npm mode
  * });
  * ```
  *
  * @public
  */
-export type BuildTarget = "dev" | "npm";
+export type BuildMode = "dev" | "npm";
+
+/**
+ * A resolved publish target from `publishConfig.targets`.
+ *
+ * @remarks
+ * Represents a single publish destination (e.g., npm registry, GitHub Packages).
+ * The transform callback receives one `PublishTarget` per iteration, enabling
+ * per-registry package.json customization (e.g., different `name` or `repository`
+ * fields for npm vs GitHub Packages).
+ *
+ * @example
+ * ```typescript
+ * import type { PublishTarget } from '@savvy-web/bun-builder';
+ *
+ * const target: PublishTarget = {
+ *   protocol: 'https',
+ *   registry: 'https://registry.npmjs.org/',
+ *   directory: 'dist/npm',
+ *   access: 'public',
+ * };
+ * ```
+ *
+ * @public
+ */
+export interface PublishTarget {
+	/** The registry protocol (e.g., `"https"`). */
+	protocol: string;
+
+	/** The registry URL (e.g., `"https://registry.npmjs.org/"`). */
+	registry: string;
+
+	/** The output directory for this target. */
+	directory: string;
+
+	/** Package access level for scoped packages. */
+	access?: "public" | "restricted";
+
+	/** Whether to generate provenance attestations. */
+	provenance?: boolean;
+
+	/** Additional target-specific properties. */
+	[key: string]: unknown;
+}
 
 /**
  * Function to transform package.json during the build process.
@@ -106,7 +149,7 @@ export type BuildTarget = "dev" | "npm";
  * - `catalog:` and `workspace:` references are resolved (npm target only)
  * - `publishConfig` and `scripts` fields are removed
  *
- * @param context - Transform context containing the build target and package.json
+ * @param context - Transform context containing the build mode, publish target, and package.json
  * @returns The modified package.json object
  *
  * @example
@@ -115,8 +158,8 @@ export type BuildTarget = "dev" | "npm";
  * import type { TransformPackageJsonFn } from '@savvy-web/bun-builder';
  * import type { PackageJson } from '@savvy-web/bun-builder';
  *
- * const transform: TransformPackageJsonFn = ({ target, pkg }): PackageJson => {
- *   if (target === 'npm') {
+ * const transform: TransformPackageJsonFn = ({ mode, pkg }): PackageJson => {
+ *   if (mode === 'npm') {
  *     delete pkg.devDependencies;
  *     delete pkg.scripts;
  *   }
@@ -125,14 +168,14 @@ export type BuildTarget = "dev" | "npm";
  * ```
  *
  * @example
- * Add custom metadata for a specific target:
+ * Customize package.json per publish target:
  * ```typescript
  * import type { TransformPackageJsonFn } from '@savvy-web/bun-builder';
  * import type { PackageJson } from '@savvy-web/bun-builder';
  *
- * const transform: TransformPackageJsonFn = ({ target, pkg }): PackageJson => {
- *   if (target === 'dev') {
- *     pkg.private = true;
+ * const transform: TransformPackageJsonFn = ({ mode, target, pkg }): PackageJson => {
+ *   if (target?.registry?.includes('github')) {
+ *     pkg.name = '@my-org/my-package';
  *   }
  *   return pkg;
  * };
@@ -140,7 +183,11 @@ export type BuildTarget = "dev" | "npm";
  *
  * @public
  */
-export type TransformPackageJsonFn = (context: { target: BuildTarget; pkg: PackageJson }) => PackageJson;
+export type TransformPackageJsonFn = (context: {
+	mode: BuildMode;
+	target: PublishTarget | undefined;
+	pkg: PackageJson;
+}) => PackageJson;
 
 /**
  * Configuration for copying files during the build process.
@@ -227,7 +274,7 @@ export interface CopyPatternConfig {
  *
  * function processContext(context: TransformFilesContext): void {
  *   // Add a generated file to the outputs
- *   context.outputs.set('version.txt', context.target);
+ *   context.outputs.set('version.txt', context.mode);
  *
  *   // Include it in the package files
  *   context.filesArray.add('version.txt');
@@ -257,12 +304,21 @@ export interface TransformFilesContext {
 	filesArray: Set<string>;
 
 	/**
-	 * The current build target being processed.
+	 * The current build mode being processed.
 	 *
 	 * @remarks
-	 * Use this to apply target-specific transformations.
+	 * Use this to apply mode-specific transformations.
 	 */
-	target: BuildTarget;
+	mode: BuildMode;
+
+	/**
+	 * The current publish target being processed, if any.
+	 *
+	 * @remarks
+	 * Defined when `publishConfig.targets` is configured. Use this
+	 * to apply target-specific transformations per publish destination.
+	 */
+	target: PublishTarget | undefined;
 }
 
 /**
@@ -280,7 +336,7 @@ export interface TransformFilesContext {
  * const transformFiles: TransformFilesCallback = async (context) => {
  *   const metadata = JSON.stringify({
  *     buildDate: new Date().toISOString(),
- *     target: context.target,
+ *     mode: context.mode,
  *   });
  *   context.outputs.set('build-metadata.json', metadata);
  *   context.filesArray.add('build-metadata.json');
@@ -664,8 +720,8 @@ export interface TsDocLintOptions {
  *   dtsBundledPackages: ['type-fest'],
  *   apiModel: true,
  *   tsdocLint: true,
- *   transform({ target, pkg }) {
- *     if (target === 'npm') {
+ *   transform({ mode, pkg }) {
+ *     if (mode === 'npm') {
  *       delete pkg.devDependencies;
  *     }
  *     return pkg;
@@ -767,14 +823,14 @@ export interface BunLibraryBuilderOptions {
 	tsconfigPath?: string;
 
 	/**
-	 * Build targets to include.
+	 * Build modes to include.
 	 *
 	 * @remarks
 	 * Can be overridden via CLI with `--env-mode dev` or `--env-mode npm`.
 	 *
 	 * @defaultValue `["dev", "npm"]`
 	 */
-	targets?: BuildTarget[];
+	targets?: BuildMode[];
 
 	/**
 	 * External dependencies that should not be bundled.
@@ -934,10 +990,10 @@ export interface BunLibraryBuilderOptions {
  *
  * for (const result of results) {
  *   if (result.success) {
- *     console.log(`Built ${result.target} in ${result.duration}ms`);
+ *     console.log(`Built ${result.mode} in ${result.duration}ms`);
  *     console.log(`Output files: ${result.outputs.join(', ')}`);
  *   } else {
- *     console.error(`Failed to build ${result.target}`);
+ *     console.error(`Failed to build ${result.mode}`);
  *     result.errors?.forEach(err => console.error(err.message));
  *   }
  * }
@@ -956,9 +1012,9 @@ export interface BuildResult {
 	success: boolean;
 
 	/**
-	 * The build target that was built.
+	 * The build mode that was built.
 	 */
-	target: BuildTarget;
+	mode: BuildMode;
 
 	/**
 	 * Absolute path to the output directory.

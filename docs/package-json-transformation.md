@@ -250,9 +250,9 @@ Apply custom modifications using the `transform` option:
 import type { TransformPackageJsonFn, PackageJson } from '@savvy-web/bun-builder';
 import { BunLibraryBuilder } from '@savvy-web/bun-builder';
 
-const transform: TransformPackageJsonFn = ({ target, pkg }): PackageJson => {
-  // Target-specific modifications
-  if (target === 'npm') {
+const transform: TransformPackageJsonFn = ({ mode, target, pkg }): PackageJson => {
+  // Mode-specific modifications
+  if (mode === 'npm') {
     // Remove devDependencies for npm
     delete pkg.devDependencies;
 
@@ -264,7 +264,7 @@ const transform: TransformPackageJsonFn = ({ target, pkg }): PackageJson => {
   // Add custom metadata
   pkg.buildInfo = {
     builtAt: new Date().toISOString(),
-    target,
+    mode,
   };
 
   return pkg;
@@ -279,7 +279,8 @@ The transform function receives:
 
 | Property | Type | Description |
 | --- | --- | --- |
-| `target` | `'dev' \| 'npm'` | Current build target |
+| `mode` | `BuildMode` | Current build mode |
+| `target` | `PublishTarget \| undefined` | Current publish target, if any |
 | `pkg` | `PackageJson` | Package.json after standard transformations |
 
 ### Transform Timing
