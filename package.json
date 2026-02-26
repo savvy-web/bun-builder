@@ -56,9 +56,9 @@
 	"dependencies": {
 		"@microsoft/tsdoc": "^0.16.0",
 		"@microsoft/tsdoc-config": "^0.18.0",
-		"@typescript-eslint/parser": "^8.55.0",
-		"eslint": "^9.39.2",
-		"eslint-plugin-tsdoc": "^0.5.0",
+		"@typescript-eslint/parser": "^8.56.0",
+		"eslint": "^10.0.0",
+		"eslint-plugin-tsdoc": "^0.5.2",
 		"picocolors": "^1.1.1",
 		"sort-package-json": "^3.6.1"
 	},
