@@ -197,7 +197,12 @@ export class BuildLogger {
 	 * ```
 	 */
 	static isCI(): boolean {
-		return process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
+		return (
+			process.env.CI === "true" ||
+			process.env.CI === "1" ||
+			process.env.GITHUB_ACTIONS === "true" ||
+			process.env.GITHUB_ACTIONS === "1"
+		);
 	}
 
 	/**

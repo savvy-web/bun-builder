@@ -100,6 +100,14 @@ export type {
 // Package.json Types
 // =============================================================================
 
-export type { PackageJson } from "./types/package-json.js";
+export type {
+	JsonArray,
+	JsonObject,
+	JsonPrimitive,
+	JsonValue,
+	LiteralUnion,
+	PackageJson,
+	Primitive,
+} from "./types/package-json.js";
 
 /* v8 ignore stop */

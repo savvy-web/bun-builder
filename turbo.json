@@ -2,10 +2,6 @@
 	"$schema": "https://turborepo.com/schema.v2.json",
 	"globalPassThroughEnv": ["RSLIB_BUILDER_LOCAL_PATH", "GITHUB_ACTIONS", "CI", "NODE_ENV"],
 	"tasks": {
-		"build": {
-			"cache": true,
-			"outputs": ["dist/**", "dist/.tsbuildinfo.bundle", ".bun-builder/declarations/**"]
-		},
 		"build:dev": {
 			"dependsOn": ["typecheck"],
 			"inputs": [
@@ -14,7 +10,9 @@
 				"$TURBO_ROOT$/bun.lock",
 				"$TURBO_ROOT$/tsconfig.json",
 				"*.ts",
-				"src/**/*"
+				"src/**/*",
+				"!**/*.test.ts",
+				"!**/*.spec.ts"
 			],
 			"outputs": ["dist/dev/**", "dist/.tsbuildinfo.dev.bundle", ".bun-builder/declarations/dev/**"]
 		},
@@ -26,7 +24,9 @@
 				"$TURBO_ROOT$/bun.lock",
 				"$TURBO_ROOT$/tsconfig.json",
 				"*.ts",
-				"src/**/*"
+				"src/**/*",
+				"!**/*.test.ts",
+				"!**/*.spec.ts"
 			],
 			"outputs": ["dist/npm/**", "dist/.tsbuildinfo.npm.bundle", ".bun-builder/declarations/npm/**"]
 		},
@@ -52,7 +52,8 @@
 				"lib/**/*.mts",
 				"lib/**/*.cts"
 			],
-			"outputLogs": "errors-only"
+			"outputLogs": "errors-only",
+			"outputs": []
 		}
 	}
 }

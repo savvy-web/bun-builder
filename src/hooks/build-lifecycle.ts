@@ -1661,7 +1661,7 @@ export async function runApiExtractor(
 		let tsdocConfigPath: string | undefined;
 		if (apiModelConfig.enabled) {
 			try {
-				tsdocConfigPath = await TsDocConfigBuilder.writeConfigFile(apiModelConfig.tsdoc ?? {}, context.outdir);
+				tsdocConfigPath = await TsDocConfigBuilder.writeConfigFile(apiModelConfig.tsdoc ?? {}, context.outdir, true);
 				logger.success(`Emitted tsdoc.json (excluded from npm publish)`);
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : String(error);

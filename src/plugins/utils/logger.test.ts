@@ -133,8 +133,20 @@ describe("BuildLogger.isCI", () => {
 		expect(BuildLogger.isCI()).toBe(false);
 	});
 
+	test("returns true when CI=1", () => {
+		process.env.CI = "1";
+
+		expect(BuildLogger.isCI()).toBe(true);
+	});
+
 	test("returns true when GITHUB_ACTIONS=true", () => {
 		process.env.GITHUB_ACTIONS = "true";
+
+		expect(BuildLogger.isCI()).toBe(true);
+	});
+
+	test("returns true when GITHUB_ACTIONS=1", () => {
+		process.env.GITHUB_ACTIONS = "1";
 
 		expect(BuildLogger.isCI()).toBe(true);
 	});

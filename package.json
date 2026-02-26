@@ -35,10 +35,10 @@
 		"./tsconfig/ecma/lib.json": "./src/public/tsconfig/ecma/lib.json"
 	},
 	"scripts": {
-		"build": "turbo run build:dev build:npm",
+		"build": "turbo run build:dev build:npm --log-order=grouped --log-prefix=none",
 		"build:dev": "bun run ./bun.config.ts --env-mode dev",
 		"build:npm": "bun run ./bun.config.ts --env-mode npm",
-		"ci:build": "CI=\"true\" turbo run build:dev build:npm",
+		"ci:build": "CI=\"true\" turbo run build:dev build:npm --log-order=grouped --log-prefix=none",
 		"ci:test": "NODE_ENV=test bun test --coverage",
 		"ci:version": "savvy-changesets version && biome format --write .",
 		"clean:e2e": "rm -rf .bun-builder/e2e-temp",

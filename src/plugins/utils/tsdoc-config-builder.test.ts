@@ -81,9 +81,21 @@ describe("TsDocConfigBuilder", () => {
 			expect(TsDocConfigBuilder.isCI()).toBe(true);
 		});
 
+		it("should return true when CI=1", () => {
+			process.env.CI = "1";
+			process.env.GITHUB_ACTIONS = undefined;
+			expect(TsDocConfigBuilder.isCI()).toBe(true);
+		});
+
 		it("should return true when GITHUB_ACTIONS=true", () => {
 			process.env.CI = undefined;
 			process.env.GITHUB_ACTIONS = "true";
+			expect(TsDocConfigBuilder.isCI()).toBe(true);
+		});
+
+		it("should return true when GITHUB_ACTIONS=1", () => {
+			process.env.CI = undefined;
+			process.env.GITHUB_ACTIONS = "1";
 			expect(TsDocConfigBuilder.isCI()).toBe(true);
 		});
 
