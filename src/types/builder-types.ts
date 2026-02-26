@@ -308,6 +308,10 @@ export interface TransformFilesContext {
 	 * Keys are paths relative to the output directory.
 	 * Values are the file content as either a UTF-8 string or binary data.
 	 * You can modify existing entries or add new files to this map.
+	 *
+	 * When `publishConfig.targets` is configured, the same map instance is
+	 * shared across all target iterations. Mutations from one target's
+	 * callback (e.g., adding a file) will be visible to subsequent targets.
 	 */
 	outputs: Map<string, Uint8Array | string>;
 
@@ -317,6 +321,9 @@ export interface TransformFilesContext {
 	 * @remarks
 	 * Add or remove entries to control which files are published.
 	 * Entries starting with `!` are excluded (negation pattern).
+	 *
+	 * When `publishConfig.targets` is configured, the same set instance is
+	 * shared across all target iterations.
 	 */
 	filesArray: Set<string>;
 
