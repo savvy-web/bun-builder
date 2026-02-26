@@ -21,6 +21,14 @@ sync-notes: |
   - TransformFilesContext: .mode (BuildMode) + .target (PublishTarget | undefined)
   - New PublishTarget interface for publish destination configuration
   - PublishConfig.targets field added to package-json.ts
+  - PublishTarget type tightened: protocol is PublishProtocol ("npm"|"jsr"),
+    registry is string|null, access/provenance/tag are required, no index signature
+  - New PublishProtocol type exported ("npm"|"jsr")
+  - New resolvePublishTargets() function in build-lifecycle.ts
+  - BuildContext now includes publishTargets: PublishTarget[]
+  - Phase 6 (transformFiles) and Phase 8 (writePackageJson) iterate over publish targets
+  - publishConfig.targets supports shorthand strings ("npm","github","jsr", URLs)
+  - Stale tsdocLint: true removed from TSDoc examples
 ---
 
 # Bun Builder - Architecture
@@ -140,13 +148,14 @@ user explicitly overrides them.
 | Function | Purpose |
 | --- | --- |
 | `executeBuild()` | Main orchestrator running all phases |
+| `resolvePublishTargets()` | Resolve `publishConfig.targets` into `PublishTarget[]` |
 | `runTsDocLint()` | Pre-build TSDoc validation |
 | `runBunBuild()` | Execute Bun.build() bundling (bundle mode) |
 | `runBundlessBuild()` | Individual file compilation (bundleless mode) |
 | `runTsgoGeneration()` | Generate .d.ts with tsgo |
 | `runApiExtractor()` | Per-entry declaration bundling with API Extractor |
 | `mergeApiModels()` | Merge per-entry API models with canonical reference rewriting |
-| `writePackageJson()` | Transform and write package.json |
+| `writePackageJson()` | Transform and write package.json (per publish target) |
 | `copyFiles()` | Copy additional assets to output |
 
 **Build Context Interface:**
@@ -161,6 +170,7 @@ interface BuildContext {
   exportPaths: Record<string, string>;  // Entry name -> original export key
   version: string;                      // Package version
   packageJson: PackageJson;             // Original package.json
+  publishTargets: PublishTarget[];      // Resolved from publishConfig.targets
 }
 ```
 
@@ -641,7 +651,8 @@ const result2 = ImportGraph.fromEntries(['./src/index.ts'], { rootDir: process.c
 |              Build Lifecycle Orchestration                  |
 |    executeBuild(options, mode)                              |
 |                                                             |
-|    1. Setup (read pkg, extract entries+exportPaths)         |
+|    1. Setup (read pkg, extract entries+exportPaths,         |
+|       resolve publish targets)                              |
 |    2. Validate local paths (early fail-fast)                |
 |    3. TSDoc Lint (from apiModel.tsdoc.lint)                 |
 |    4a. Bun.build() bundled (bundle!=false)                  |
@@ -705,26 +716,50 @@ bun run bun.config.ts  # Builds both
 
 ### Publish Targets
 
-The `PublishTarget` type represents a single publish destination (e.g., npm
-registry, GitHub Packages). Publish targets are resolved from
-`publishConfig.targets` in package.json and passed to transform callbacks,
-enabling per-registry package.json customization.
+The `PublishTarget` type represents a fully resolved publish destination (e.g.,
+npm registry, GitHub Packages, JSR). Publish targets are resolved from
+`publishConfig.targets` in package.json by the `resolvePublishTargets()` function
+and stored in `BuildContext.publishTargets`.
 
 ```typescript
+type PublishProtocol = "npm" | "jsr";
+
 interface PublishTarget {
-  protocol: string;      // e.g., "https"
-  registry: string;      // e.g., "https://registry.npmjs.org/"
-  directory: string;     // Output directory for this target
-  access?: "public" | "restricted";
-  provenance?: boolean;
-  [key: string]: unknown;
+  protocol: PublishProtocol;            // "npm" or "jsr"
+  registry: string | null;             // Registry URL, or null for JSR targets
+  directory: string;                   // Absolute path to output directory
+  access: "public" | "restricted";     // Package access level (required)
+  provenance: boolean;                 // Whether provenance attestations are configured (required)
+  tag: string;                         // Publish tag, e.g., "latest" (required)
 }
 ```
 
-The `TransformPackageJsonFn` and `TransformFilesContext` receive the current
-`PublishTarget` (or `undefined` when no targets are configured). Currently
-`target` is passed as `undefined` in the build lifecycle; full publish target
-iteration is a planned future enhancement.
+This type aligns with the `ResolvedTarget` type from `workflow-release-action`,
+minus authentication-specific fields.
+
+**`resolvePublishTargets()` function** (in `build-lifecycle.ts`):
+
+Resolves `publishConfig.targets` from package.json into a `PublishTarget[]`.
+Supports shorthand strings and full target objects:
+
+| Shorthand | Protocol | Registry | Provenance |
+| --- | --- | --- | --- |
+| `"npm"` | `npm` | `https://registry.npmjs.org/` | `true` |
+| `"github"` | `npm` | `https://npm.pkg.github.com/` | `true` |
+| `"jsr"` | `jsr` | `null` | `false` |
+| URL string | `npm` | the URL | `false` |
+
+Shorthands are expanded via the `KNOWN_TARGET_SHORTHANDS` constant. Default
+`access` is inherited from `publishConfig.access` (or `"restricted"`), and
+default `tag` is `"latest"`.
+
+**Publish target iteration in the build lifecycle:**
+
+When `publishConfig.targets` is configured, the `transform` and `transformFiles`
+callbacks are called once per publish target. The `writePackageJson` phase also
+iterates over publish targets, writing to each target's output directory. When no
+targets are configured, both are called once with `target: undefined` (backward
+compatible).
 
 ### Current Limitations
 
@@ -1113,7 +1148,9 @@ executeBuild(options, mode)
          v
 +----------------------------------------+
 | 9. TRANSFORM FILES (optional)          |
-|    - Call transformFiles callback      |
+|    - Iterate over publish targets      |
+|      (or once with target: undefined)  |
+|    - Call transformFiles per target    |
 |    - Allow user post-processing        |
 |    - Modify files array if needed      |
 +----------------------------------------+
@@ -1131,13 +1168,15 @@ executeBuild(options, mode)
          v
 +----------------------------------------+
 | 11. WRITE PACKAGE.JSON                 |
+|    - Iterate over publish targets      |
+|      (or once with target: undefined)  |
 |    - Resolve catalog references (npm)  |
 |    - Transform export paths            |
 |    - Apply format option to transform  |
 |    - Apply user transform function     |
 |    - Set private flag for dev          |
 |    - Add files array                   |
-|    - Write to output directory         |
+|    - Write to target dir (or outdir)   |
 +----------------------------------------+
          |
          v
@@ -1172,8 +1211,9 @@ executeBuild(options, mode)
 5. Validate at least one entry found
 6. Log detected entries
 7. Log tsconfig being used
-8. Create `BuildContext` object
-9. Clean and create output directory
+8. Resolve publish targets via `resolvePublishTargets()`
+9. Create `BuildContext` object (includes `publishTargets`)
+10. Clean and create output directory
 
 **Outputs:**
 
@@ -1411,13 +1451,19 @@ generation when `apiModel` is enabled.
 
 **Operations:**
 
-1. Call user's `transformFiles` callback
-2. Allow modifications to outputs and filesArray
+1. Build targets list: `context.publishTargets` if non-empty, otherwise `[undefined]`
+2. For each publish target:
+   - Call user's `transformFiles` callback with current target
+   - Allow modifications to outputs and filesArray
+
+When no `publishConfig.targets` are configured, the callback is called once with
+`target: undefined` (backward compatible).
 
 **User Responsibilities:**
 
 - Add/modify output files
 - Update files array as needed
+- Apply per-target transformations when `target` is defined
 
 #### Phase 8: Virtual Entries
 
@@ -1469,14 +1515,20 @@ virtualEntries: {
 
 **Operations:**
 
-1. Build user transform function wrapper
-2. Call `PackageJsonTransformer.build()`:
-   - Resolve catalog references (npm only)
-   - Apply build transformations
-   - Call user transform
-3. Set `private: true` for dev mode
-4. Add sorted files array
-5. Write to `<outdir>/package.json`
+1. Build targets list: `context.publishTargets` if non-empty, otherwise `[undefined]`
+2. For each publish target:
+   a. Wrap user `transform` function with current publish target in context
+   b. Call `PackageJsonTransformer.build()`:
+      - Resolve catalog references (npm only)
+      - Apply build transformations
+      - Call user transform (receives `{ mode, target, pkg }`)
+   c. Set `private: true` for dev mode
+   d. Add sorted files array
+   e. Write to publish target's directory (or `<outdir>/package.json` when no target)
+   f. Create target directory if it differs from outdir
+
+When no `publishConfig.targets` are configured, the phase runs once with
+`target: undefined` and writes to the default output directory (backward compatible).
 
 #### Phase 11: Copy to Local Paths (npm mode only)
 
@@ -1604,12 +1656,13 @@ Source package.json
          v
     User transform function (if provided)
     (receives { mode, target: PublishTarget | undefined, pkg })
+    (called once per publish target, or once with target: undefined)
          |
          v
     Add files array from build
          |
          v
-    Write to dist/<mode>/package.json
+    Write to target directory (or dist/<mode>/package.json)
 ```
 
 ### Declaration Generation Flow
@@ -2167,14 +2220,13 @@ bun test --watch
 - **Watch mode**: Rebuild on file changes
 - **Incremental declarations**: Cache tsgo output
 - **Parallel mode builds**: Build dev and npm concurrently
-- **Publish target iteration**: Iterate over `publishConfig.targets` in the build
-  lifecycle, passing each `PublishTarget` to transform callbacks for per-registry
-  package.json customization
 
 ### Phase 2: Medium-term
 
 - **Source map preservation**: Optional .map file distribution
-- **JSR target support**: Publish to JavaScript Registry
+- **JSR build transformations**: JSR-specific output transformations (JSR protocol
+  is supported in `PublishTarget` resolution, but JSR-specific build transforms
+  like jsr.json generation are not yet implemented)
 
 ### Phase 3: Long-term
 
@@ -2189,6 +2241,16 @@ bun test --watch
 - `PublishConfig.targets` field for per-registry publish configuration
 - All internal APIs aligned: `resolveModes()`, `run(modes?)`, `build(mode)`,
   `executeBuild(options, mode)`, `BuildContext.mode`, `BuildResult.mode`
+- `PublishTarget` type tightened: `protocol` is `PublishProtocol` (`"npm"` | `"jsr"`),
+  `registry` is `string | null`, `access`/`provenance`/`tag` are required, index signature removed
+- New `PublishProtocol` type exported
+- New `resolvePublishTargets()` function with `KNOWN_TARGET_SHORTHANDS` for shorthand
+  expansion (`"npm"`, `"github"`, `"jsr"`, URL strings)
+- `BuildContext` includes `publishTargets: PublishTarget[]`
+- Publish target iteration: `transformFiles` and `writePackageJson` called once per target
+  (or once with `target: undefined` for backward compatibility)
+- `publishConfig.targets` supports shorthand strings (`Array<Record<string, JsonValue> | string>`)
+- Stale `tsdocLint: true` removed from TSDoc examples
 
 **Previously Completed (feat/support-tsx-files):**
 
@@ -2227,10 +2289,12 @@ bun test --watch
 ---
 
 **Document Status:** Current - Fully documented including BuildMode/PublishTarget
-terminology split, bundleless mode, TSDoc warning collection with source locations,
-forgotten export source locations, tsdoc-metadata main entry restriction,
-enumMemberOrder preserve, TSDocConfigFile loading, and DEFAULT_OPTIONS on
-BunLibraryBuilder.
+terminology split, PublishProtocol type, resolvePublishTargets() with shorthand
+expansion, publish target iteration in transformFiles and writePackageJson phases,
+BuildContext.publishTargets field, bundleless mode, TSDoc warning collection with
+source locations, forgotten export source locations, tsdoc-metadata main entry
+restriction, enumMemberOrder preserve, TSDocConfigFile loading, and DEFAULT_OPTIONS
+on BunLibraryBuilder.
 
 **Recent Changes (feat/target-vs-mode branch):**
 
@@ -2243,9 +2307,22 @@ BunLibraryBuilder.
 - `TransformPackageJsonFn` context changed from `{ target: BuildTarget; pkg }` to
   `{ mode: BuildMode; target: PublishTarget | undefined; pkg }`
 - `TransformFilesContext` now has `.mode` (`BuildMode`) + `.target` (`PublishTarget | undefined`)
-- New `PublishTarget` interface for publish destination configuration
-  (protocol, registry, directory, access, provenance)
-- `PublishConfig.targets?: JsonArray` field added to `package-json.ts`
+- New `PublishTarget` interface for publish destination configuration; `protocol` is
+  `PublishProtocol` (`"npm"` | `"jsr"`), `registry` is `string | null` (null for JSR),
+  `access`, `provenance`, and `tag` are all required fields, no index signature
+- New `PublishProtocol` type exported (`"npm"` | `"jsr"`)
+- New `resolvePublishTargets()` function in `build-lifecycle.ts` resolves
+  `publishConfig.targets` into `PublishTarget[]`; supports shorthand strings
+  (`"npm"`, `"github"`, `"jsr"`, URL strings) via `KNOWN_TARGET_SHORTHANDS`
+- `BuildContext` now includes `publishTargets: PublishTarget[]` field
+- `transformFiles` callback (Phase 6) iterates over publish targets: called once per
+  target, or once with `target: undefined` when no targets configured
+- `writePackageJson` (Phase 8) iterates over publish targets: writes to each target's
+  directory, or to `outdir` when no targets configured
+- `publishConfig.targets` type changed to `Array<Record<string, JsonValue> | string>`
+  (added string for shorthands)
+- Stale `tsdocLint: true` removed from TSDoc examples in `index.ts`,
+  `bun-library-builder.ts`, and `builder-types.ts`
 
 **Previous Changes (feat/support-tsx-files branch):**
 

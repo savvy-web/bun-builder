@@ -335,13 +335,14 @@ export namespace PackageJson {
 		 *
 		 * @remarks
 		 * Each target describes a publish destination. The builder's transform
-		 * callback is invoked once per target, allowing per-registry package.json
-		 * customization.
+		 * and transformFiles callbacks are invoked once per target, allowing
+		 * per-registry customization.
 		 *
-		 * Each element is a JSON object with string keys. Well-known properties
-		 * include `protocol`, `registry`, `directory`, `access`, and `provenance`.
+		 * Supports shorthand strings (`"npm"`, `"github"`, `"jsr"`, or a URL)
+		 * and full target objects with `protocol`, `registry`, `directory`,
+		 * `access`, `provenance`, and `tag` properties.
 		 */
-		targets?: JsonArray;
+		targets?: Array<Record<string, JsonValue> | string>;
 	}
 
 	/**

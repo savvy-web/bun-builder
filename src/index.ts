@@ -36,7 +36,6 @@
  *   externals: ['lodash'],
  *   dtsBundledPackages: ['type-fest'],
  *   apiModel: true,
- *   tsdocLint: true,
  *   transform({ mode, pkg }) {
  *     if (mode === 'npm') {
  *       delete pkg.devDependencies;
@@ -83,6 +82,7 @@ export type {
 	BunLibraryBuilderOptions,
 	CopyPatternConfig,
 	EntryPoints,
+	PublishProtocol,
 	PublishTarget,
 	TransformFilesCallback,
 	TransformFilesContext,

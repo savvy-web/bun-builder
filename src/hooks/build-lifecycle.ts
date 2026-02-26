@@ -22,7 +22,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, rename as renameFile, rm, rmdir, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import type { BuildArtifact } from "bun";
 import { EntryExtractor } from "../plugins/utils/entry-extractor.js";
 import { FileSystemUtils, LocalPathValidator } from "../plugins/utils/file-utils.js";
@@ -37,6 +37,7 @@ import type {
 	BuildResult,
 	BunLibraryBuilderOptions,
 	CopyPatternConfig,
+	PublishTarget,
 	TsDocOptions,
 } from "../types/builder-types.js";
 import type { PackageJson } from "../types/package-json.js";
@@ -294,6 +295,89 @@ export class ApiModelConfigResolver {
 }
 
 /**
+ * Known shorthand expansions for publish target strings.
+ *
+ * @remarks
+ * Aligns with the `KNOWN_SHORTHANDS` in workflow-release-action's
+ * `resolve-targets.ts`. The builder only needs build-relevant fields;
+ * authentication details (tokenEnv) are handled by the release action.
+ *
+ * @internal
+ */
+const KNOWN_TARGET_SHORTHANDS: Record<
+	string,
+	{ protocol: "npm" | "jsr"; registry: string | null; provenance: boolean }
+> = {
+	npm: { protocol: "npm", registry: "https://registry.npmjs.org/", provenance: true },
+	github: { protocol: "npm", registry: "https://npm.pkg.github.com/", provenance: true },
+	jsr: { protocol: "jsr", registry: null, provenance: false },
+};
+
+/**
+ * Resolve publish targets from package.json's `publishConfig.targets`.
+ *
+ * @remarks
+ * Expands shorthand strings (`"npm"`, `"github"`, `"jsr"`, or a URL) into
+ * fully resolved `PublishTarget` objects. This mirrors the resolution logic
+ * in `workflow-release-action/src/utils/resolve-targets.ts`, but only
+ * produces the subset of fields relevant to the build process.
+ *
+ * @param packageJson - The parsed package.json
+ * @param cwd - The package root directory (for resolving relative directories)
+ * @param outdir - The default output directory (used when no target directory is specified)
+ * @returns Array of resolved publish targets (empty if none configured)
+ *
+ * @internal
+ */
+export function resolvePublishTargets(packageJson: PackageJson, cwd: string, outdir: string): PublishTarget[] {
+	const publishConfig = packageJson.publishConfig;
+	const raw = publishConfig?.targets;
+	if (!Array.isArray(raw) || raw.length === 0) return [];
+
+	const defaultAccess = (publishConfig?.access as "public" | "restricted" | undefined) ?? "restricted";
+	const defaultDirectory = publishConfig?.directory ? resolve(cwd, String(publishConfig.directory)) : outdir;
+
+	return raw.map((entry): PublishTarget => {
+		// Expand shorthand strings
+		if (typeof entry === "string") {
+			const shorthand = KNOWN_TARGET_SHORTHANDS[entry];
+			if (shorthand) {
+				return {
+					protocol: shorthand.protocol,
+					registry: shorthand.registry,
+					directory: defaultDirectory,
+					access: defaultAccess,
+					provenance: shorthand.provenance,
+					tag: "latest",
+				};
+			}
+			// URL shorthand — treat as custom npm-compatible registry
+			if (entry.startsWith("https://") || entry.startsWith("http://")) {
+				return {
+					protocol: "npm",
+					registry: entry,
+					directory: defaultDirectory,
+					access: defaultAccess,
+					provenance: false,
+					tag: "latest",
+				};
+			}
+			throw new Error(`Unknown publish target shorthand: ${entry}`);
+		}
+
+		// Full object target
+		const protocol = entry.protocol === "jsr" ? "jsr" : "npm";
+		const registry = protocol === "jsr" ? null : String(entry.registry ?? "https://registry.npmjs.org/");
+		const directory = entry.directory ? resolve(cwd, String(entry.directory)) : defaultDirectory;
+		const access = entry.access === "public" || entry.access === "restricted" ? entry.access : defaultAccess;
+		const provenance = typeof entry.provenance === "boolean" ? entry.provenance : false;
+		const tag = typeof entry.tag === "string" ? entry.tag : "latest";
+
+		return { protocol, registry, directory, access, provenance, tag };
+	});
+}
+
+/**
  * Context passed to build lifecycle hooks.
  *
  * @remarks
@@ -357,6 +441,16 @@ export interface BuildContext {
 	 * Original package.json content.
 	 */
 	packageJson: PackageJson;
+
+	/**
+	 * Resolved publish targets from `publishConfig.targets`.
+	 *
+	 * @remarks
+	 * Empty array when no publish targets are configured.
+	 * When populated, the `transform` and `transformFiles` callbacks
+	 * are invoked once per target.
+	 */
+	publishTargets: PublishTarget[];
 }
 
 /**
@@ -1582,16 +1676,21 @@ export async function runApiExtractor(
  *
  * @param context - The build context
  * @param filesArray - Set of files to include in the package.json `files` field
+ * @param publishTarget - The current publish target, or undefined when no targets are configured
  *
  * @internal
  */
-export async function writePackageJson(context: BuildContext, filesArray: Set<string>): Promise<void> {
+export async function writePackageJson(
+	context: BuildContext,
+	filesArray: Set<string>,
+	publishTarget: PublishTarget | undefined,
+): Promise<void> {
 	const isProduction = context.mode === "npm";
 
-	// Build the user transform function
+	// Build the user transform function with the current publish target
 	const userTransform = context.options.transform;
 	const transformFn = userTransform
-		? (pkg: PackageJson): PackageJson => userTransform({ mode: context.mode, target: undefined, pkg })
+		? (pkg: PackageJson): PackageJson => userTransform({ mode: context.mode, target: publishTarget, pkg })
 		: undefined;
 
 	const transformed = await PackageJsonTransformer.build(context.packageJson, {
@@ -1611,8 +1710,15 @@ export async function writePackageJson(context: BuildContext, filesArray: Set<st
 	const files = Array.from(filesArray).sort();
 	transformed.files = files;
 
-	// Write to output directory
-	const outputPath = join(context.outdir, "package.json");
+	// Write to the publish target's directory (or outdir when no target)
+	const outputDir = publishTarget?.directory ?? context.outdir;
+
+	// Ensure the target directory exists (may differ from outdir for multi-target builds)
+	if (outputDir !== context.outdir) {
+		await mkdir(outputDir, { recursive: true });
+	}
+
+	const outputPath = join(outputDir, "package.json");
 	await writeFile(outputPath, `${JSON.stringify(transformed, null, "\t")}\n`);
 }
 
@@ -1890,6 +1996,8 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 	const tsconfigPath = options.tsconfigPath ?? "tsconfig.json";
 	logger.global.info(`Using tsconfig: ${tsconfigPath}`);
 
+	const publishTargets = resolvePublishTargets(packageJson, cwd, outdir);
+
 	const context: BuildContext = {
 		cwd,
 		mode,
@@ -1899,6 +2007,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 		exportPaths,
 		version,
 		packageJson,
+		publishTargets,
 	};
 
 	// Validate apiModel.localPaths early to fail fast before expensive build operations.
@@ -2076,6 +2185,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 	}
 
 	// Phase 6: Transform files callback
+	// Called once per publish target, or once with target: undefined when no targets are configured.
 	if (options.transformFiles) {
 		const outputsMap = new Map<string, Uint8Array | string>();
 		for (const output of outputs) {
@@ -2083,12 +2193,17 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 			outputsMap.set(relative(outdir, output.path), content);
 		}
 
-		await options.transformFiles({
-			outputs: outputsMap,
-			filesArray,
-			mode,
-			target: undefined,
-		});
+		const targets: Array<PublishTarget | undefined> =
+			context.publishTargets.length > 0 ? context.publishTargets : [undefined];
+
+		for (const publishTarget of targets) {
+			await options.transformFiles({
+				outputs: outputsMap,
+				filesArray,
+				mode,
+				target: publishTarget,
+			});
+		}
 	}
 
 	// Phase 7: Virtual entries
@@ -2190,7 +2305,13 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 	}
 
 	// Phase 8: Write package.json
-	await writePackageJson(context, filesArray);
+	// Called once per publish target, or once with target: undefined when no targets are configured.
+	const writeTargets: Array<PublishTarget | undefined> =
+		context.publishTargets.length > 0 ? context.publishTargets : [undefined];
+
+	for (const publishTarget of writeTargets) {
+		await writePackageJson(context, filesArray, publishTarget);
+	}
 	filesArray.add("package.json");
 
 	// Phase 9: Copy API artifacts to local paths (npm mode only, skip in CI)

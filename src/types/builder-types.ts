@@ -93,46 +93,63 @@ export interface VirtualEntryConfig {
 export type BuildMode = "dev" | "npm";
 
 /**
+ * Publishing protocol for a publish target.
+ *
+ * @remarks
+ * Determines how the package is published:
+ * - `"npm"`: npm-compatible registries (npmjs, GitHub Packages, Verdaccio, etc.)
+ * - `"jsr"`: JavaScript Registry (jsr.io)
+ *
+ * @public
+ */
+export type PublishProtocol = "npm" | "jsr";
+
+/**
  * A resolved publish target from `publishConfig.targets`.
  *
  * @remarks
- * Represents a single publish destination (e.g., npm registry, GitHub Packages).
- * The transform callback receives one `PublishTarget` per iteration, enabling
- * per-registry package.json customization (e.g., different `name` or `repository`
- * fields for npm vs GitHub Packages).
+ * Represents a fully resolved publish destination. When `publishConfig.targets`
+ * is defined in package.json, the builder resolves each entry (including
+ * shorthands like `"npm"`, `"github"`, `"jsr"`) into a `PublishTarget` and
+ * passes it to the `transform` and `transformFiles` callbacks once per target.
+ *
+ * This type aligns with the `ResolvedTarget` type from the
+ * `workflow-release-action`, minus authentication-specific fields.
  *
  * @example
  * ```typescript
  * import type { PublishTarget } from '@savvy-web/bun-builder';
  *
  * const target: PublishTarget = {
- *   protocol: 'https',
+ *   protocol: 'npm',
  *   registry: 'https://registry.npmjs.org/',
  *   directory: 'dist/npm',
  *   access: 'public',
+ *   provenance: true,
+ *   tag: 'latest',
  * };
  * ```
  *
  * @public
  */
 export interface PublishTarget {
-	/** The registry protocol (e.g., `"https"`). */
-	protocol: string;
+	/** The publishing protocol. */
+	protocol: PublishProtocol;
 
-	/** The registry URL (e.g., `"https://registry.npmjs.org/"`). */
-	registry: string;
+	/** The registry URL, or `null` for JSR targets. */
+	registry: string | null;
 
-	/** The output directory for this target. */
+	/** The absolute path to the output directory for this target. */
 	directory: string;
 
 	/** Package access level for scoped packages. */
-	access?: "public" | "restricted";
+	access: "public" | "restricted";
 
-	/** Whether to generate provenance attestations. */
-	provenance?: boolean;
+	/** Whether provenance attestations are configured. */
+	provenance: boolean;
 
-	/** Additional target-specific properties. */
-	[key: string]: unknown;
+	/** The publish tag (e.g., `"latest"`, `"next"`, `"beta"`). */
+	tag: string;
 }
 
 /**
@@ -719,7 +736,6 @@ export interface TsDocLintOptions {
  *   externals: ['lodash', /^@aws-sdk\//],
  *   dtsBundledPackages: ['type-fest'],
  *   apiModel: true,
- *   tsdocLint: true,
  *   transform({ mode, pkg }) {
  *     if (mode === 'npm') {
  *       delete pkg.devDependencies;
