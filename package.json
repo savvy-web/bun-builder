@@ -110,6 +110,7 @@
 	},
 	"publishConfig": {
 		"access": "public",
+		"directory": "dist/dev",
 		"targets": [
 			{
 				"protocol": "npm",
