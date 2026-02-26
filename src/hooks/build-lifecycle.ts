@@ -1124,13 +1124,19 @@ export async function runTsgoGeneration(context: BuildContext, tempDtsDir: strin
  *
  * @internal
  */
-async function copyUnbundledDeclarations(context: BuildContext, tempDtsDir: string): Promise<{ dtsFiles: string[] }> {
+async function copyUnbundledDeclarations(
+	context: BuildContext,
+	tempDtsDir: string,
+	allowedFiles?: Set<string>,
+): Promise<{ dtsFiles: string[] }> {
 	const logger = BuildLogger.createEnvLogger(context.mode);
 
 	// Find all .d.ts files in the temp directory using Bun.Glob
 	const dtsGlob = new Bun.Glob("**/*.d.ts");
 	const dtsFiles: string[] = [];
 	for await (const file of dtsGlob.scan({ cwd: tempDtsDir })) {
+		// Only include files reachable from entry points when an allowlist is provided
+		if (allowedFiles && !allowedFiles.has(file)) continue;
 		dtsFiles.push(file);
 	}
 	const copiedFiles: string[] = [];
@@ -1326,7 +1332,7 @@ export async function runApiExtractor(
 	context: BuildContext,
 	tempDtsDir: string,
 	apiModel?: ApiModelOptions | boolean,
-	options?: { bundleless?: boolean },
+	options?: { bundleless?: boolean; tracedFiles?: Set<string> },
 ): Promise<{
 	bundledDtsPaths?: string[];
 	apiModelPath?: string;
@@ -1343,7 +1349,7 @@ export async function runApiExtractor(
 		FileSystemUtils.getApiExtractorPath();
 	} catch {
 		logger.warn("API Extractor not found, copying unbundled declarations");
-		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
+		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir, options?.tracedFiles);
 		return { dtsFiles };
 	}
 
@@ -1351,7 +1357,7 @@ export async function runApiExtractor(
 	const exportEntries = Object.entries(context.entries).filter(([name]) => !name.startsWith("bin/"));
 	if (exportEntries.length === 0) {
 		logger.warn("No export entry points found for API Extractor");
-		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
+		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir, options?.tracedFiles);
 		return { dtsFiles };
 	}
 
@@ -1563,7 +1569,7 @@ export async function runApiExtractor(
 
 		if (!isBundleless && bundledDtsPaths.length === 0) {
 			logger.warn("API Extractor failed for all entries, copying unbundled declarations");
-			const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
+			const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir, options?.tracedFiles);
 			return { dtsFiles };
 		}
 
@@ -1660,7 +1666,10 @@ export async function runApiExtractor(
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		logger.warn(`API Extractor error: ${errorMessage}, copying unbundled declarations`);
-		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
+		if (error instanceof Error && error.stack) {
+			logger.warn(error.stack);
+		}
+		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir, options?.tracedFiles);
 		return { dtsFiles };
 	}
 }
@@ -2078,6 +2087,13 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 		}
 	}
 
+	// Trace import graph to determine which source files are reachable from entry points.
+	// This is used to filter declaration files so test files and other non-reachable
+	// files are excluded from the output.
+	const graph = new ImportGraph({ rootDir: cwd });
+	const tracedResult = graph.traceFromEntries(Object.values(context.entries));
+	const tracedFiles = new Set(tracedResult.files.map((f) => relative(cwd, f).replace(/\.tsx?$/, ".d.ts")));
+
 	// Phase 3: Declaration generation
 	const tempDtsDir = join(cwd, ".bun-builder", "declarations", mode);
 	await rm(tempDtsDir, { recursive: true, force: true });
@@ -2088,7 +2104,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 		logger.warn("Declaration generation failed, continuing without .d.ts files");
 	} else if (!isBundleMode) {
 		// Bundleless mode: copy raw .d.ts files (no DTS rollup)
-		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
+		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir, tracedFiles);
 		for (const file of dtsFiles) {
 			filesArray.add(file);
 		}
@@ -2099,7 +2115,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 				apiModelPath,
 				tsconfigPath: tscPath,
 				tsdocConfigPath: tsdocPath,
-			} = await runApiExtractor(context, tempDtsDir, options.apiModel, { bundleless: true });
+			} = await runApiExtractor(context, tempDtsDir, options.apiModel, { bundleless: true, tracedFiles });
 
 			if (apiModelPath) {
 				filesArray.add(`!${relative(outdir, apiModelPath)}`);
@@ -2117,6 +2133,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 			context,
 			tempDtsDir,
 			mode === "npm" ? options.apiModel : undefined,
+			{ tracedFiles },
 		);
 
 		if (bundledDtsPaths) {
@@ -2317,6 +2334,12 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 		context.publishTargets.length > 0 ? context.publishTargets : [undefined];
 
 	for (const publishTarget of writeTargets) {
+		// Copy all build artifacts to additional publish target directories
+		if (publishTarget?.directory && publishTarget.directory !== context.outdir) {
+			const { cpSync, mkdirSync } = await import("node:fs");
+			mkdirSync(publishTarget.directory, { recursive: true });
+			cpSync(context.outdir, publishTarget.directory, { recursive: true });
+		}
 		await writePackageJson(context, filesArray, publishTarget);
 	}
 	filesArray.add("package.json");

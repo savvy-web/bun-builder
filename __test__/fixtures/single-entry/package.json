@@ -1,0 +1,8 @@
+{
+	"name": "@test/single-entry",
+	"version": "1.0.0",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	}
+}

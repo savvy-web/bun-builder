@@ -16,7 +16,7 @@ required.
 - **Bundled or Bundleless** -- Single-file bundles with rolled-up `.d.ts`, or preserve source structure with raw declarations
 - **TSDoc Warnings** -- API Extractor TSDoc warnings reported with source locations; configurable severity
 - **Catalog Resolution** -- Resolves Bun `catalog:` and `workspace:` protocols for npm publishing
-- **Multi-Target Output** -- Single config produces dev (source maps) and npm (optimized) builds
+- **Multi-Target Publishing** -- Single config produces dev and npm builds; all artifacts are copied to each `publishConfig.targets` directory
 
 ## Installation
 
@@ -63,6 +63,8 @@ The builder ships with sensible defaults -- most projects need no configuration:
 Set `bundle: false` to preserve the source directory structure in output.
 Files are compiled individually instead of bundled, and raw `.d.ts` files are
 emitted directly (no DTS rollup). API model generation still works if enabled.
+Test files (`.test.ts`, `.spec.ts`) and `__test__`/`__tests__` directories are
+automatically excluded from declaration output via import graph analysis.
 
 ```typescript
 import { BunLibraryBuilder } from '@savvy-web/bun-builder';

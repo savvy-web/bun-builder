@@ -5,6 +5,7 @@ How `@savvy-web/bun-builder` generates and bundles TypeScript declarations.
 ## Table of Contents
 
 - [Overview](#overview)
+- [Import Graph Filtering](#import-graph-filtering)
 - [Declaration Generation with tsgo](#declaration-generation-with-tsgo)
 - [Declaration Bundling with API Extractor](#declaration-bundling-with-api-extractor)
 - [Bundleless Mode](#bundleless-mode)
@@ -26,6 +27,42 @@ The builder uses a two-stage process for TypeScript declarations:
 
 This produces clean, single-file declarations that are easier for consumers to
 work with and result in faster IDE performance.
+
+---
+
+## Import Graph Filtering
+
+Declaration file output is filtered using import graph analysis from entry
+points. This ensures only relevant `.d.ts` files are included in the final
+build output.
+
+### How It Works
+
+1. `ImportGraph.traceFromEntries()` walks the import/export graph starting from
+   each package.json entry point
+2. Only source files reachable from those entry points are considered for
+   declaration output
+3. Unreachable files (internal helpers, test utilities) are excluded automatically
+
+### Automatic Test File Exclusion
+
+The following patterns are always excluded from declaration output, even if they
+appear in the import graph:
+
+- Files matching `*.test.d.ts` or `*.spec.d.ts`
+- Files inside `__test__/` directories
+- Files inside `__tests__/` directories
+
+This prevents test-only types from leaking into published packages.
+
+### Applies to Both Modes
+
+Import graph filtering is used in:
+
+- **Bundle mode** -- When API Extractor falls back to copying unbundled
+  declarations, only reachable files are copied
+- **Bundleless mode** -- Raw `.d.ts` files are filtered so only reachable
+  source files produce declaration output
 
 ---
 
@@ -129,9 +166,11 @@ bundled mode.
 ### How It Works
 
 1. tsgo generates individual `.d.ts` files as normal
-2. Raw `.d.ts` files are copied directly to the output directory (no DTS rollup)
-3. The `src/` prefix is stripped: `src/utils/helper.d.ts` becomes `utils/helper.d.ts`
-4. API Extractor still runs for `.api.json` generation if `apiModel` is enabled,
+2. Import graph analysis determines which files are reachable from entry points
+3. Only reachable `.d.ts` files are copied to the output directory (no DTS rollup);
+   test files and `__test__`/`__tests__` directories are excluded
+4. The `src/` prefix is stripped: `src/utils/helper.d.ts` becomes `utils/helper.d.ts`
+5. API Extractor still runs for `.api.json` generation if `apiModel` is enabled,
    but with `dtsRollup: { enabled: false }`
 
 ### Output Example
@@ -360,7 +399,10 @@ unbundled declarations.
 
 ### Fallback Output
 
-Instead of a single bundled file, individual `.d.ts` files are copied:
+Instead of a single bundled file, individual `.d.ts` files are copied. Only
+files reachable from entry points via import graph analysis are included, and
+test files are automatically excluded (see
+[Import Graph Filtering](#import-graph-filtering)).
 
 ```text
 dist/npm/
@@ -491,7 +533,8 @@ error   [npm] Declaration file not found: .bun-builder/declarations/npm/src/inde
 ### Optimize Declaration Generation
 
 1. **Use project references** for large monorepos
-2. **Exclude test files** from declaration generation
+2. **Test files are excluded automatically** -- Import graph filtering removes
+   `.test.d.ts`, `.spec.d.ts`, and files in `__test__`/`__tests__` directories
 3. **Minimize deep import chains** to speed up bundling
 
 ### Cache Considerations

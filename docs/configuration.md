@@ -582,6 +582,9 @@ Production builds include:
 - TSDoc warnings and forgotten exports reported with source locations
 - `private` based on `publishConfig.access`
 - Build artifacts copied to `localPaths` (if configured, non-CI only)
+- When `publishConfig.targets` is configured, all build artifacts (JS, `.d.ts`,
+  LICENSE, README, and package.json) are copied to each additional publish
+  target directory (e.g., `dist/github/`)
 
 ---
 

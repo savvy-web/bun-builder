@@ -9,12 +9,16 @@ completeness: 100
 related: []
 dependencies: []
 sync-notes: |
-  Synced with feat/eslint-10 branch changes:
-  - ESLint upgraded from v9 to v10
-  - eslint-plugin-tsdoc upgraded from 0.5.0 to 0.5.2 (uses context.sourceCode
-    and context.cwd with fallbacks for ESLint 10 compatibility)
-  - @typescript-eslint/parser upgraded from ^8.55.0 to ^8.56.0
-  - No source code changes required; plugin handles ESLint 10 natively
+  Synced with fix/compilation branch changes:
+  - Phase 8 (Write package.json) now copies ALL build artifacts to additional
+    publish target directories before writing per-target package.json
+  - ImportGraph-based DTS filtering: import graph traced from entry points to
+    build allowlist of reachable source files, filtering test files and
+    non-reachable declarations from output
+  - copyUnbundledDeclarations() and runApiExtractor() accept tracedFiles
+    parameter for declaration filtering
+  - Error logging in runApiExtractor catch block now includes stack traces
+  - New E2E test infrastructure under __test__/e2e/ and __test__/fixtures/
 ---
 
 # Bun Builder - Architecture
@@ -572,9 +576,11 @@ await TsDocConfigBuilder.validateConfigFile({}, './tsdoc.json');
 **Location:** `src/plugins/utils/import-graph.ts`
 
 **Purpose:** Analyzes TypeScript import relationships to discover all files
-reachable from specified entry points. Used by TSDoc linting for file discovery
-and by bundleless mode (`runBundlessBuild()`) to discover all source files that
-need individual compilation.
+reachable from specified entry points. Used by TSDoc linting for file discovery,
+by bundleless mode (`runBundlessBuild()`) to discover all source files that
+need individual compilation, and by the declaration generation phase to build an
+allowlist of reachable files for filtering test files and non-reachable
+declarations from output.
 
 **Key Features:**
 
@@ -649,7 +655,7 @@ const result2 = ImportGraph.fromEntries(['./src/index.ts'], { rootDir: process.c
 |    7. Copy files (README, LICENSE, assets)                  |
 |    8. Transform files (user callback)                       |
 |    9. Virtual entries (bundle non-exported files)            |
-|   10. Write package.json (with files array)                 |
+|   10. Copy artifacts + Write package.json (per target)      |
 |   11. Copy to local paths (npm mode, non-CI only)           |
 +-------------------------------------------------------------+
                               |
@@ -666,7 +672,7 @@ const result2 = ImportGraph.fromEntries(['./src/index.ts'], { rootDir: process.c
 |    - LocalPathCopier: Copy artifacts to local paths         |
 |    - TsconfigResolver: Resolve tsconfig for virtual envs    |
 |    - TsDocConfigBuilder: Generate/validate tsdoc.json       |
-|    - ImportGraph: Trace imports for lint + bundleless mode  |
+|    - ImportGraph: Trace imports for lint + bundleless + DTS |
 |    - TSConfigs: Manage tsconfig for declaration gen         |
 |    - mergeApiModels(): Merge per-entry API model JSON       |
 +-------------------------------------------------------------+
@@ -1004,7 +1010,8 @@ bun-builder/
 │   │       ├── package-json-transformer.ts # PackageJsonTransformer (static)
 │   │       ├── tsconfig-resolver.ts      # TsconfigResolver class
 │   │       ├── tsdoc-config-builder.ts   # TsDocConfigBuilder (static)
-│   │       ├── import-graph.ts           # ImportGraph class for TSDoc lint
+│   │       ├── import-graph.ts           # ImportGraph class for TSDoc lint,
+│   │       │                             # bundleless mode, and DTS filtering
 │   │       │                             # (static fromEntries/fromPackageExports)
 │   │       ├── file-utils.ts             # FileSystemUtils (static)
 │   │       │                             # LocalPathValidator (static)
@@ -1019,6 +1026,16 @@ bun-builder/
 │       ├── builder-types.ts     # Builder option types
 │       ├── package-json.ts      # PackageJson type
 │       └── tsconfig-json.d.ts   # TSConfig types
+├── __test__/
+│   ├── e2e/                     # End-to-end build tests
+│   │   ├── bundle-mode.e2e.test.ts    # Bundle mode output + test file exclusion
+│   │   ├── publish-targets.e2e.test.ts # Multi-target artifact copying
+│   │   └── utils/
+│   │       ├── build-fixture.ts       # buildFixture() helper
+│   │       └── assertions.ts          # E2E assertion helpers
+│   └── fixtures/
+│       ├── single-entry/        # Single export with helper.test.ts
+│       └── multi-target/        # Multi-registry publishConfig.targets
 ├── bun.config.ts                # Self-builds using BunLibraryBuilder
 ├── package.json
 ├── tsconfig.json
@@ -1093,6 +1110,17 @@ executeBuild(options, mode)
          |
          v
 +----------------------------------------+
+| 5b. TRACE IMPORT GRAPH (DTS filter)   |
+|    - ImportGraph.traceFromEntries()    |
+|    - Build set of reachable .d.ts      |
+|    - Used to filter test files and     |
+|      non-reachable declarations        |
+|    - Passed to copyUnbundledDecls and  |
+|      runApiExtractor as tracedFiles    |
++----------------------------------------+
+         |
+         v
++----------------------------------------+
 | 6. DECLARATION GENERATION              |
 |    - Create temp declaration directory |
 |    - Remove stale .tsbuildinfo files   |
@@ -1153,9 +1181,11 @@ executeBuild(options, mode)
          |
          v
 +----------------------------------------+
-| 11. WRITE PACKAGE.JSON                 |
+| 11. COPY ARTIFACTS + WRITE PACKAGE.JSON|
 |    - Iterate over publish targets      |
 |      (or once with target: undefined)  |
+|    - For each additional target dir:   |
+|      cpSync(outdir, target.directory)  |
 |    - Resolve catalog references (npm)  |
 |    - Transform export paths            |
 |    - Apply format option to transform  |
@@ -1307,6 +1337,36 @@ with `dtsRollup: { enabled: false }`.
 
 - `{ outputs: BuildArtifact[], success: boolean }`
 
+#### Phase 3b: Import Graph Tracing (DTS Filtering)
+
+After the Bun build phase completes (and before declaration generation), the
+import graph is traced from entry points to build an allowlist of reachable
+source files. This ensures that test files (e.g., `*.test.ts`) and other
+non-reachable source files are excluded from declaration output.
+
+**Inputs:**
+
+- `BuildContext` with entries
+
+**Operations:**
+
+1. Create `ImportGraph` with `rootDir: cwd`
+2. Call `traceFromEntries()` with all entry point paths
+3. Convert traced file paths to `.d.ts` equivalents using `relative(cwd, f).replace(/\.tsx?$/, ".d.ts")`
+4. Build a `Set<string>` of allowed `.d.ts` filenames (`tracedFiles`)
+
+**Outputs:**
+
+- `tracedFiles: Set<string>` - Set of `.d.ts` filenames reachable from entry points
+
+**Usage:** The `tracedFiles` set is passed to:
+
+- `copyUnbundledDeclarations(context, tempDtsDir, tracedFiles)` - Only copies
+  `.d.ts` files in the allowlist (via optional `allowedFiles` parameter)
+- `runApiExtractor(context, tempDtsDir, apiModel, { tracedFiles })` - Propagated
+  to all fallback `copyUnbundledDeclarations` calls within API Extractor error
+  handling paths
+
 #### Phase 4: Declaration Generation
 
 **Inputs:**
@@ -1337,7 +1397,7 @@ with `dtsRollup: { enabled: false }`.
 - `BuildContext` (with `entries`, `exportPaths`)
 - `tempDtsDir`: Directory with generated .d.ts files
 - `apiModel`: ApiModelOptions or boolean
-- `options`: `{ bundleless?: boolean }` (set when `bundle: false`)
+- `options`: `{ bundleless?: boolean; tracedFiles?: Set<string> }` (set when `bundle: false`; `tracedFiles` filters declarations)
 
 **Architecture:**
 
@@ -1386,7 +1446,8 @@ generation when `apiModel` is enabled.
     - All member canonical references recursively rewritten
 11. Generate resolved tsconfig.json using `TsconfigResolver`
 12. Generate tsdoc.json in output directory
-13. Handle failures by copying unbundled declarations
+13. Handle failures by copying unbundled declarations (passing `tracedFiles`
+    to filter output); error logging includes stack traces
 
 **Outputs:**
 
@@ -1492,7 +1553,7 @@ virtualEntries: {
 }
 ```
 
-#### Phase 10: Write package.json
+#### Phase 10: Copy Artifacts + Write package.json
 
 **Inputs:**
 
@@ -1503,15 +1564,19 @@ virtualEntries: {
 
 1. Build targets list: `context.publishTargets` if non-empty, otherwise `[undefined]`
 2. For each publish target:
-   a. Wrap user `transform` function with current publish target in context
-   b. Call `PackageJsonTransformer.build()`:
+   a. If the target's directory differs from `context.outdir`, copy ALL build
+      artifacts (JS bundles, .d.ts files, LICENSE, README, etc.) from `outdir`
+      to the target directory using `cpSync(context.outdir, publishTarget.directory,
+      { recursive: true })`. This ensures each target directory contains a
+      complete set of build outputs, not just `package.json`.
+   b. Wrap user `transform` function with current publish target in context
+   c. Call `PackageJsonTransformer.build()`:
       - Resolve catalog references (npm only)
       - Apply build transformations
       - Call user transform (receives `{ mode, target, pkg }`)
-   c. Set `private: true` for dev mode
-   d. Add sorted files array
-   e. Write to publish target's directory (or `<outdir>/package.json` when no target)
-   f. Create target directory if it differs from outdir
+   d. Set `private: true` for dev mode
+   e. Add sorted files array
+   f. Write to publish target's directory (or `<outdir>/package.json` when no target)
 
 When no `publishConfig.targets` are configured, the phase runs once with
 `target: undefined` and writes to the default output directory (backward compatible).
@@ -1655,6 +1720,15 @@ Source package.json
 
 ```text
 Source .ts files
+         |
+         v
++----------------------------------------+
+| ImportGraph.traceFromEntries()         |
+|   - Trace reachable files from entries |
+|   - Convert to .d.ts equivalents      |
+|   - Build tracedFiles: Set<string>     |
+|   - Filters test files from DTS output |
++----------------------------------------+
          |
          v
     TSConfigs.node.ecma.lib.writeBundleTempConfig(target)
@@ -2144,7 +2218,10 @@ packages.
 
 ### Test Organization
 
-Tests are co-located with source files:
+Tests are organized in two tiers: unit/integration tests co-located with source
+files, and end-to-end tests in a dedicated `__test__/` directory.
+
+**Co-located unit/integration tests:**
 
 ```text
 src/
@@ -2160,8 +2237,31 @@ src/
 │   ├── catalog-resolver.ts
 │   ├── catalog-resolver.test.ts
 │   └── ...
-└── __test__/
-    └── utils/                # Shared test utilities
+```
+
+**End-to-end tests:**
+
+```text
+__test__/
+├── e2e/
+│   ├── bundle-mode.e2e.test.ts        # 7 tests: bundle output, test file exclusion
+│   ├── publish-targets.e2e.test.ts    # 11 tests: multi-target artifact copying
+│   └── utils/
+│       ├── build-fixture.ts           # buildFixture() helper
+│       └── assertions.ts              # E2E assertion helpers
+└── fixtures/
+    ├── single-entry/                  # Single export with helper.test.ts
+    │   ├── src/index.ts
+    │   ├── src/helper.ts
+    │   ├── src/helper.test.ts         # Test file (should be excluded from output)
+    │   ├── package.json
+    │   ├── tsconfig.json
+    │   └── LICENSE
+    └── multi-target/                  # Multi-registry publishConfig.targets
+        ├── src/index.ts
+        ├── package.json               # Has npm + GitHub targets
+        ├── tsconfig.json
+        └── LICENSE
 ```
 
 ### Testing Approach
@@ -2177,6 +2277,25 @@ src/
 - Test build lifecycle with mock context
 - Verify phase interactions
 - Test error handling paths
+
+**End-to-End Tests:**
+
+E2E tests validate complete build pipeline behavior by running actual builds
+against fixture projects:
+
+- **`buildFixture()`** (`__test__/e2e/utils/build-fixture.ts`): Copies a fixture
+  directory to a temporary directory, generates a `bun.config.ts` with the
+  specified builder options, runs the build via `Bun.spawn`, and collects output
+  artifacts for assertions.
+- **Assertion helpers** (`__test__/e2e/utils/assertions.ts`): Provide semantic
+  assertions including `assertBuildSucceeded`, `assertOutputExists`,
+  `assertNoOutputMatching`, and more.
+- **Bundle mode tests** (`bundle-mode.e2e.test.ts`): 7 tests verifying bundle
+  mode output structure, correct JS output, declaration generation, and
+  test file exclusion (e.g., `helper.test.d.ts` should not appear in output).
+- **Publish targets tests** (`publish-targets.e2e.test.ts`): 11 tests verifying
+  multi-target artifact copying - JS bundles, .d.ts files, LICENSE, README, and
+  package.json are all present in each target directory.
 
 **Type Safety:**
 
@@ -2195,6 +2314,9 @@ bun test --coverage
 
 # Watch mode
 bun test --watch
+
+# Run E2E tests only
+bun test __test__/e2e/
 ```
 
 ---
@@ -2220,7 +2342,16 @@ bun test --watch
 - **Remote caching**: Share build cache across CI runs
 - **Plugin system**: User-defined build phases
 
-**Recently Completed (feat/target-vs-mode):**
+**Recently Completed (fix/compilation):**
+
+- Multi-target artifact copying: Phase 8 copies all build outputs to additional
+  publish target directories before writing per-target package.json
+- ImportGraph-based DTS filtering: tracedFiles allowlist excludes test files and
+  non-reachable declarations from build output
+- E2E test infrastructure with buildFixture() helper, assertion utilities, and
+  fixture projects for bundle mode and publish target testing
+
+**Previously Completed (feat/target-vs-mode):**
 
 - `BuildTarget` renamed to `BuildMode` with new `PublishTarget` type for publish destinations
 - Transform callbacks receive `{ mode, target: PublishTarget | undefined, pkg }`
@@ -2274,15 +2405,42 @@ bun test --watch
 
 ---
 
-**Document Status:** Current - Fully documented including BuildMode/PublishTarget
-terminology split, PublishProtocol type, resolvePublishTargets() with shorthand
-expansion, publish target iteration in transformFiles and writePackageJson phases,
+**Document Status:** Current - Fully documented including multi-target artifact
+copying (cpSync before writePackageJson per target), ImportGraph-based DTS
+filtering (tracedFiles allowlist for declaration output), E2E test infrastructure
+(**test**/e2e/ and **test**/fixtures/), BuildMode/PublishTarget terminology split,
+PublishProtocol type, resolvePublishTargets() with shorthand expansion, publish
+target iteration in transformFiles and writePackageJson phases,
 BuildContext.publishTargets field, bundleless mode, TSDoc warning collection with
 source locations, forgotten export source locations, tsdoc-metadata main entry
 restriction, enumMemberOrder preserve, TSDocConfigFile loading, and DEFAULT_OPTIONS
 on BunLibraryBuilder.
 
-**Recent Changes (feat/target-vs-mode branch):**
+**Recent Changes (fix/compilation branch):**
+
+- Phase 8 (Write package.json) now copies ALL build artifacts (JS bundles,
+  .d.ts files, LICENSE, README, etc.) to additional publish target directories
+  using `cpSync(context.outdir, publishTarget.directory, { recursive: true })`
+  before calling `writePackageJson()` for each target whose directory differs
+  from the primary outdir. Previously, only `writePackageJson()` was called,
+  resulting in target directories containing only `package.json`.
+- ImportGraph-based DTS filtering: before declaration generation, the import
+  graph is traced from entry points to build a `Set<string>` of reachable source
+  files (`tracedFiles`). This set is converted to `.d.ts` equivalents and passed
+  to `copyUnbundledDeclarations()` (via optional `allowedFiles?: Set<string>`
+  parameter) and `runApiExtractor()` (via `tracedFiles?: Set<string>` in options).
+  This filters out test files (e.g., `helper.test.d.ts`) and other non-reachable
+  declarations from build output.
+- Error logging in `runApiExtractor` catch block now includes stack traces via
+  `error.stack` for better debugging
+- New E2E test infrastructure under `__test__/e2e/` with `buildFixture()` helper
+  and assertion utilities. Fixtures in `__test__/fixtures/` provide minimal
+  package setups for testing (single-entry with test file exclusion,
+  multi-target with npm + GitHub registries). Bundle mode tests (7) verify
+  output structure and test file exclusion; publish targets tests (11) verify
+  multi-target artifact copying completeness.
+
+**Previous Changes (feat/target-vs-mode branch):**
 
 - `BuildTarget` type renamed to `BuildMode` throughout; values unchanged ("dev" | "npm")
 - `BuildResult.target`, `BuildContext.target` renamed to `.mode`
