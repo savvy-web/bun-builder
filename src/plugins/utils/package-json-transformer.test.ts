@@ -365,3 +365,43 @@ describe("PackageJsonTransformer.applyBuildTransformations", () => {
 		expect(keys.indexOf("name")).toBeLessThan(keys.indexOf("version"));
 	});
 });
+
+describe("PackageJsonTransformer.build", () => {
+	test("applies build transformations without production mode", async () => {
+		const pkg: PackageJson = {
+			name: "test-package",
+			version: "1.0.0",
+			exports: { ".": "./src/index.ts" },
+		};
+
+		const result = await PackageJsonTransformer.build(pkg, {
+			isProduction: false,
+			processTSExports: true,
+			bundle: true,
+		});
+
+		expect(result.name).toBe("test-package");
+		expect(result.exports).toEqual({
+			".": {
+				types: "./index.d.ts",
+				import: "./index.js",
+			},
+		});
+	});
+
+	test("applies custom transform function", async () => {
+		const pkg: PackageJson = {
+			name: "test-package",
+			version: "1.0.0",
+		};
+
+		const result = await PackageJsonTransformer.build(pkg, {
+			transform: (p) => {
+				p.description = "transformed";
+				return p;
+			},
+		});
+
+		expect(result.description).toBe("transformed");
+	});
+});

@@ -41,6 +41,7 @@
 		"ci:build": "CI=\"true\" turbo run build:dev build:npm",
 		"ci:test": "NODE_ENV=test bun test --coverage",
 		"ci:version": "savvy-changesets version && biome format --write .",
+		"clean:e2e": "rm -rf .bun-builder/e2e-temp",
 		"lint": "biome check --max-diagnostics=none",
 		"lint:fix": "biome check --write --max-diagnostics=none",
 		"lint:fix:unsafe": "biome check --write --unsafe --max-diagnostics=none",
@@ -48,7 +49,7 @@
 		"lint:md:fix": "markdownlint-cli2  --config './lib/configs/.markdownlint-cli2.jsonc' --fix",
 		"lint:tsdoc": "eslint --config ./lib/configs/eslint.config.ts --ignore-pattern '**/*.test.ts'",
 		"prepare": "husky",
-		"test": "NODE_ENV=test bun test",
+		"test": "NODE_ENV=test bun test --coverage",
 		"test:coverage": "NODE_ENV=test bun test --coverage",
 		"test:watch": "NODE_ENV=test bun test --watch",
 		"typecheck": "tsgo --noEmit"

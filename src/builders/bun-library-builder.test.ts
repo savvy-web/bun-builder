@@ -2,8 +2,13 @@
  * Unit tests for the BunLibraryBuilder class.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { BunLibraryBuilder } from "./bun-library-builder.js";
+
+/** Type-safe accessor for testing private resolveModes method. */
+interface TestableBuilder {
+	resolveModes(): string[];
+}
 
 describe("BunLibraryBuilder", () => {
 	describe("constructor", () => {
@@ -54,6 +59,60 @@ describe("BunLibraryBuilder", () => {
 
 			expect(module.BunLibraryBuilder).toBeDefined();
 		});
+	});
+});
+
+describe("resolveModes", () => {
+	let savedArgv: string[];
+
+	beforeEach(() => {
+		savedArgv = process.argv;
+	});
+
+	afterEach(() => {
+		process.argv = savedArgv;
+	});
+
+	test("returns ['dev'] when --env-mode dev", () => {
+		process.argv = ["bun", "bun.config.ts", "--env-mode", "dev"];
+		const builder = new BunLibraryBuilder();
+		const modes = (builder as unknown as TestableBuilder).resolveModes();
+		expect(modes).toEqual(["dev"]);
+	});
+
+	test("returns ['npm'] when --env-mode npm", () => {
+		process.argv = ["bun", "bun.config.ts", "--env-mode", "npm"];
+		const builder = new BunLibraryBuilder();
+		const modes = (builder as unknown as TestableBuilder).resolveModes();
+		expect(modes).toEqual(["npm"]);
+	});
+
+	test("returns default modes when no --env-mode flag", () => {
+		process.argv = ["bun", "bun.config.ts"];
+		const builder = new BunLibraryBuilder();
+		const modes = (builder as unknown as TestableBuilder).resolveModes();
+		expect(modes).toEqual(["dev", "npm"]);
+	});
+
+	test("returns default modes for invalid --env-mode", () => {
+		process.argv = ["bun", "bun.config.ts", "--env-mode", "invalid"];
+		const builder = new BunLibraryBuilder();
+		const modes = (builder as unknown as TestableBuilder).resolveModes();
+		expect(modes).toEqual(["dev", "npm"]);
+	});
+
+	test("uses targets option when no CLI flag", () => {
+		process.argv = ["bun", "bun.config.ts"];
+		const builder = new BunLibraryBuilder({ targets: ["npm"] });
+		const modes = (builder as unknown as TestableBuilder).resolveModes();
+		expect(modes).toEqual(["npm"]);
+	});
+
+	test("CLI flag overrides targets option", () => {
+		process.argv = ["bun", "bun.config.ts", "--env-mode", "dev"];
+		const builder = new BunLibraryBuilder({ targets: ["npm"] });
+		const modes = (builder as unknown as TestableBuilder).resolveModes();
+		expect(modes).toEqual(["dev"]);
 	});
 });
 

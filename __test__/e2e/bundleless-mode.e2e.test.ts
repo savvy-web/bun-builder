@@ -1,10 +1,11 @@
 /**
- * E2E tests for bundle mode builds.
+ * E2E tests for bundleless mode builds.
  *
  * Verifies that:
- * - Bundle mode produces correct JS and .d.ts outputs
- * - Test files (.test.d.ts) are excluded from output
- * - ImportGraph-based filtering works for both DTS rollup and fallback paths
+ * - Bundleless mode preserves source directory structure
+ * - Raw .d.ts files are emitted per source file (no DTS rollup)
+ * - Test files (.test.d.ts) are excluded via ImportGraph filtering
+ * - Internal modules appear in output (not rolled up)
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -18,14 +19,15 @@ import {
 import type { BuildFixtureResult } from "./utils/build-fixture.js";
 import { buildFixture, cleanStaleTempDirs } from "./utils/build-fixture.js";
 
-describe("bundle mode E2E", () => {
+describe("bundleless mode E2E", () => {
 	let result: BuildFixtureResult;
 
 	beforeAll(async () => {
 		cleanStaleTempDirs();
 		result = await buildFixture({
-			fixture: "__test__/fixtures/single-entry",
+			fixture: "__test__/fixtures/bundleless-entry",
 			mode: "npm",
+			builderOptions: "{ bundle: false }",
 		});
 	}, 60_000);
 
@@ -37,12 +39,15 @@ describe("bundle mode E2E", () => {
 		assertBuildSucceeded(result);
 	});
 
-	test("produces JS output", () => {
+	test("produces JS output for index", () => {
 		assertOutputExists(result, "index.js");
 	});
 
-	test("produces declaration output", () => {
-		// Should have either rolled-up .d.ts or individual .d.ts files
+	test("preserves directory structure for nested modules", () => {
+		assertOutputExists(result, "utils/helper.js");
+	});
+
+	test("produces raw .d.ts files per source file", () => {
 		const hasDts = result.outputFiles.some((f) => f.endsWith(".d.ts"));
 		expect(hasDts).toBe(true);
 	});
@@ -52,16 +57,16 @@ describe("bundle mode E2E", () => {
 		assertNoOutputMatching(result, /\.spec\.d\.ts$/);
 	});
 
+	test("does not produce helper.test.js in output", () => {
+		assertOutputNotExists(result, "helper.test.js");
+	});
+
 	test("produces package.json", () => {
 		assertOutputExists(result, "package.json");
 	});
 
 	test("copies LICENSE to output", () => {
 		assertOutputExists(result, "LICENSE");
-	});
-
-	test("does not include helper.test.d.ts in output", () => {
-		assertOutputNotExists(result, "helper.test.d.ts");
 	});
 
 	test("JS output contains greet function", () => {

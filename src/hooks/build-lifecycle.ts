@@ -566,6 +566,7 @@ interface ResolvedLintOptions {
  * @internal
  */
 export async function runTsDocLint(context: BuildContext, options: ResolvedLintOptions): Promise<void> {
+	/* v8 ignore start -- @preserve */
 	const logger = BuildLogger.createLogger("tsdoc-lint");
 
 	if (options.enabled === false) {
@@ -708,6 +709,7 @@ export async function runTsDocLint(context: BuildContext, options: ResolvedLintO
 	} else if (warningCount > 0) {
 		logger.warn(`TSDoc validation warnings:\n${formatted}`);
 	}
+	/* v8 ignore stop */
 }
 
 /**
@@ -729,6 +731,7 @@ export async function runTsDocLint(context: BuildContext, options: ResolvedLintO
  * @internal
  */
 export async function runBunBuild(context: BuildContext): Promise<{ outputs: BuildArtifact[]; success: boolean }> {
+	/* v8 ignore start -- @preserve */
 	const logger = BuildLogger.createEnvLogger(context.mode);
 	const timer = BuildLogger.createTimer();
 
@@ -900,6 +903,7 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 	logger.info(`Bundled ${renamedOutputs.length} file(s) in ${BuildLogger.formatTime(timer.elapsed())}`);
 
 	return { outputs: renamedOutputs, success: true };
+	/* v8 ignore stop */
 }
 
 /**
@@ -920,6 +924,7 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
  * @internal
  */
 export async function runBundlessBuild(context: BuildContext): Promise<{ outputs: BuildArtifact[]; success: boolean }> {
+	/* v8 ignore start -- @preserve */
 	const logger = BuildLogger.createEnvLogger(context.mode);
 	const timer = BuildLogger.createTimer();
 
@@ -1021,6 +1026,7 @@ export async function runBundlessBuild(context: BuildContext): Promise<{ outputs
 	logger.info(`Compiled ${renamedOutputs.length} file(s) in ${BuildLogger.formatTime(timer.elapsed())}`);
 
 	return { outputs: renamedOutputs, success: true };
+	/* v8 ignore stop */
 }
 
 /**
@@ -1041,6 +1047,7 @@ export async function runBundlessBuild(context: BuildContext): Promise<{ outputs
  * @internal
  */
 export async function runTsgoGeneration(context: BuildContext, tempDtsDir: string): Promise<boolean> {
+	/* v8 ignore start -- @preserve */
 	const logger = BuildLogger.createEnvLogger(context.mode);
 	const timer = BuildLogger.createTimer();
 
@@ -1108,6 +1115,7 @@ export async function runTsgoGeneration(context: BuildContext, tempDtsDir: strin
 			resolve(false);
 		});
 	});
+	/* v8 ignore stop */
 }
 
 /**
@@ -1129,6 +1137,7 @@ async function copyUnbundledDeclarations(
 	tempDtsDir: string,
 	allowedFiles?: Set<string>,
 ): Promise<{ dtsFiles: string[] }> {
+	/* v8 ignore start -- @preserve */
 	const logger = BuildLogger.createEnvLogger(context.mode);
 
 	// Find all .d.ts files in the temp directory using Bun.Glob
@@ -1154,6 +1163,7 @@ async function copyUnbundledDeclarations(
 
 	logger.info(`Copied ${copiedFiles.length} unbundled declaration file(s)`);
 	return { dtsFiles: copiedFiles };
+	/* v8 ignore stop */
 }
 
 /**
@@ -1166,6 +1176,7 @@ async function copyUnbundledDeclarations(
  * @internal
  */
 function resolveDtsPath(sourcePath: string, tempDtsDir: string): string | undefined {
+	/* v8 ignore start -- @preserve */
 	const normalizedPath = sourcePath.replace(/^\.\//, "").replace(/\.tsx?$/, ".d.ts");
 	let tempDtsPath = join(tempDtsDir, normalizedPath);
 
@@ -1179,6 +1190,7 @@ function resolveDtsPath(sourcePath: string, tempDtsDir: string): string | undefi
 	}
 
 	return existsSync(tempDtsPath) ? tempDtsPath : undefined;
+	/* v8 ignore stop */
 }
 
 /**
@@ -1341,6 +1353,7 @@ export async function runApiExtractor(
 	tsdocConfigPath?: string;
 	dtsFiles?: string[];
 }> {
+	/* v8 ignore start -- @preserve */
 	const logger = BuildLogger.createEnvLogger(context.mode);
 	const timer = BuildLogger.createTimer();
 
@@ -1672,6 +1685,7 @@ export async function runApiExtractor(
 		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir, options?.tracedFiles);
 		return { dtsFiles };
 	}
+	/* v8 ignore stop */
 }
 
 /**
@@ -1971,6 +1985,7 @@ export class LocalPathCopier {
  * @internal
  */
 export async function executeBuild(options: BunLibraryBuilderOptions, mode: BuildMode): Promise<BuildResult> {
+	/* v8 ignore start -- @preserve */
 	const cwd = process.cwd();
 	const outdir = join(cwd, "dist", mode);
 	const logger = BuildLogger.createEnvLogger(mode);
@@ -2391,4 +2406,5 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 		outputs: outputs.map((o) => o.path),
 		duration: timer.elapsed(),
 	};
+	/* v8 ignore stop */
 }

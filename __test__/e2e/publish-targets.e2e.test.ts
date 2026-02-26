@@ -10,14 +10,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { assertBuildSucceeded } from "./utils/assertions.js";
+import { assertBuildSucceeded, assertPackageJsonField, assertStdoutContains } from "./utils/assertions.js";
 import type { BuildFixtureResult } from "./utils/build-fixture.js";
-import { buildFixture, collectOutputFiles, readPackageJson } from "./utils/build-fixture.js";
+import { buildFixture, cleanStaleTempDirs, collectOutputFiles, readPackageJson } from "./utils/build-fixture.js";
 
 describe("publish targets E2E", () => {
 	let result: BuildFixtureResult;
 
 	beforeAll(async () => {
+		cleanStaleTempDirs();
 		result = await buildFixture({
 			fixture: "__test__/fixtures/multi-target",
 			mode: "npm",
@@ -82,5 +83,13 @@ describe("publish targets E2E", () => {
 		const npmFiles = result.outputFiles.filter((f) => f.endsWith(".js"));
 		const githubFiles = collectOutputFiles(result, "dist/github").filter((f) => f.endsWith(".js"));
 		expect(githubFiles).toEqual(npmFiles);
+	});
+
+	test("stdout mentions npm or build mode", () => {
+		assertStdoutContains(result, "npm");
+	});
+
+	test("github target package.json is not private", () => {
+		assertPackageJsonField(result, "private", false, "dist/github");
 	});
 });

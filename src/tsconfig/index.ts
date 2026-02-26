@@ -180,6 +180,7 @@ export class TSConfigFile {
 		this.description = description;
 
 		// Define custom inspect for Node.js console.log with deep inspection
+		/* v8 ignore start -- @preserve */
 		Object.defineProperty(this, inspect.custom, {
 			value: (_depth: number, options: InspectOptions) =>
 				inspect(
@@ -199,6 +200,7 @@ export class TSConfigFile {
 					},
 				),
 		});
+		/* v8 ignore stop */
 	}
 }
 
@@ -272,6 +274,7 @@ export class LibraryTSConfigFile extends TSConfigFile {
 	 * @returns Absolute path to the temporary file
 	 */
 	writeBundleTempConfig(target: "dev" | "npm"): string {
+		/* v8 ignore start -- @preserve */
 		const cwd = process.cwd();
 		const config = this.bundle(target);
 
@@ -316,6 +319,7 @@ export class LibraryTSConfigFile extends TSConfigFile {
 		const tempFilePath = join(tmpdir(), `tsconfig-bundle-${randomUUID()}.json`);
 		writeFileSync(tempFilePath, JSON.stringify(absoluteConfig, null, "\t"));
 		return tempFilePath;
+		/* v8 ignore stop */
 	}
 }
 

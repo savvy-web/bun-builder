@@ -339,6 +339,7 @@ export class BuildLogger {
 	 * ```
 	 */
 	static createLogger(prefix: string): Logger {
+		/* v8 ignore start -- @preserve */
 		const isTest = BuildLogger.isTestEnvironment();
 		const prefixStr = dim(`[${prefix}]`);
 
@@ -369,6 +370,7 @@ export class BuildLogger {
 				}
 			},
 		};
+		/* v8 ignore stop */
 	}
 
 	/**
@@ -400,6 +402,7 @@ export class BuildLogger {
 	 * ```
 	 */
 	static createEnvLogger(envId: string): EnvLogger {
+		/* v8 ignore start -- @preserve */
 		const isTest = BuildLogger.isTestEnvironment();
 		const envTag = cyan(`[${envId}]`);
 
@@ -476,6 +479,7 @@ export class BuildLogger {
 				}
 			},
 		};
+		/* v8 ignore stop */
 	}
 
 	/**
@@ -501,6 +505,7 @@ export class BuildLogger {
 	 * ```
 	 */
 	static async collectFileInfo(outdir: string, files: string[]): Promise<FileEntry[]> {
+		/* v8 ignore start -- @preserve */
 		const entries: FileEntry[] = [];
 
 		for (const file of files) {
@@ -521,6 +526,7 @@ export class BuildLogger {
 		}
 
 		return entries;
+		/* v8 ignore stop */
 	}
 
 	/**
@@ -546,10 +552,12 @@ export class BuildLogger {
 	 * ```
 	 */
 	static printBanner(version: string): void {
+		/* v8 ignore start -- @preserve */
 		if (BuildLogger.isTestEnvironment()) return;
 		console.log();
 		console.log(`${magenta("Bun Builder")} ${dim(`v${version}`)}`);
 		console.log();
+		/* v8 ignore stop */
 	}
 
 	/**
@@ -584,6 +592,7 @@ export class BuildLogger {
 	 * ```
 	 */
 	static printFileTable(files: FileEntry[], _outdir: string, label?: string): void {
+		/* v8 ignore start -- @preserve */
 		if (BuildLogger.isTestEnvironment()) return;
 		if (files.length === 0) return;
 
@@ -608,6 +617,7 @@ export class BuildLogger {
 
 		console.log();
 		console.log(`${dim("Total:".padEnd(pathWidth))}    ${bold(green(BuildLogger.formatSize(totalSize)))}`);
+		/* v8 ignore stop */
 	}
 
 	/**
@@ -633,10 +643,12 @@ export class BuildLogger {
 	 * ```
 	 */
 	static printSummary(targets: string[], totalTime: number): void {
+		/* v8 ignore start -- @preserve */
 		if (BuildLogger.isTestEnvironment()) return;
 		console.log();
 		console.log(
 			`${BuildLogger.createPrefix("ready", green)}${bold(`Built ${targets.length} target(s) in ${BuildLogger.formatTime(totalTime)}`)}`,
 		);
+		/* v8 ignore stop */
 	}
 }

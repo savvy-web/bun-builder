@@ -4,7 +4,7 @@
  * Copies a fixture to a temp directory, runs the build, and collects outputs.
  */
 
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import type { BuildMode } from "../../../src/types/builder-types.js";
 
@@ -156,4 +156,33 @@ export function readPackageJson(result: BuildFixtureResult, dir?: string): Recor
 export function collectOutputFiles(result: BuildFixtureResult, dir: string): string[] {
 	const fullDir = join(result.tempDir, dir);
 	return existsSync(fullDir) ? collectFiles(fullDir, fullDir) : [];
+}
+
+/**
+ * Clean up stale temp directories from previous test runs.
+ * Removes directories older than 1 hour to prevent accumulation from killed tests.
+ */
+export function cleanStaleTempDirs(): void {
+	const projectRoot = resolve(import.meta.dir, "../../..");
+	const tempBase = join(projectRoot, ".bun-builder", "e2e-temp");
+
+	if (!existsSync(tempBase)) return;
+
+	/* v8 ignore start -- cleanup heuristic requires stale dirs to exist */
+	const ONE_HOUR = 60 * 60 * 1000;
+	const now = Date.now();
+
+	for (const entry of readdirSync(tempBase, { withFileTypes: true })) {
+		if (!entry.isDirectory()) continue;
+		const dirPath = join(tempBase, entry.name);
+		try {
+			const stats = statSync(dirPath);
+			if (now - stats.mtimeMs > ONE_HOUR) {
+				rmSync(dirPath, { recursive: true, force: true });
+			}
+		} catch {
+			// Ignore errors during cleanup
+		}
+	}
+	/* v8 ignore stop */
 }
