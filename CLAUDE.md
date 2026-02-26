@@ -10,7 +10,7 @@ API for TypeScript packages.
 
 - Bundled or bundleless ESM builds via Bun.build()
 - Rolled-up `.d.ts` (bundled) or raw `.d.ts` (bundleless) via tsgo + API Extractor
-- Multiple targets (dev and npm) with different optimizations
+- Multiple build modes (dev and npm) with different optimizations
 - Automatic package.json transformation and Bun catalog resolution
 - TSDoc validation with source-location-aware warnings
 - Self-building (uses BunLibraryBuilder for its own build)
@@ -119,16 +119,16 @@ Forgotten export warnings also include source location. Controlled via
 - `tsdoc.json` loaded via `TSDocConfigFile.loadForFolder()` for custom tag definitions
 - `enumMemberOrder: "preserve"` preserves source-order enum members in API model
 
-### Build Targets
+### Build Modes
 
-Two build targets with different optimizations:
+Two build modes with different optimizations:
 
-| Target | Source Maps | Minify | API Model | Output |
+| Mode | Source Maps | Minify | API Model | Output |
 | --- | --- | --- | --- | --- |
 | `dev` | linked | false | false | `dist/dev/` |
 | `npm` | none | false | true | `dist/npm/` |
 
-Targets selected via `--env-mode`:
+Modes selected via `--env-mode`:
 
 ```bash
 bun run bun.config.ts --env-mode dev
@@ -202,7 +202,7 @@ bun run build:dev
 # Build for npm
 bun run build:npm
 
-# Build all targets
+# Build all modes
 bun run build
 
 # Lint

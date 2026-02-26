@@ -40,7 +40,7 @@ describe("BunLibraryBuilder", () => {
 	});
 
 	describe("type exports", () => {
-		test("exports BuildTarget type", async () => {
+		test("exports BuildMode type", async () => {
 			const { BunLibraryBuilder } = await import("./bun-library-builder.js");
 
 			// TypeScript will verify this at compile time
@@ -162,8 +162,8 @@ describe("BunLibraryBuilder options", () => {
 
 	test("transform accepts function", () => {
 		const builder = new BunLibraryBuilder({
-			transform: ({ target, pkg }) => {
-				if (target === "npm") {
+			transform: ({ mode, pkg }) => {
+				if (mode === "npm") {
 					delete pkg.devDependencies;
 				}
 				return pkg;

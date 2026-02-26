@@ -36,9 +36,8 @@
  *   externals: ['lodash'],
  *   dtsBundledPackages: ['type-fest'],
  *   apiModel: true,
- *   tsdocLint: true,
- *   transform({ target, pkg }) {
- *     if (target === 'npm') {
+ *   transform({ mode, pkg }) {
+ *     if (mode === 'npm') {
  *       delete pkg.devDependencies;
  *     }
  *     return pkg;
@@ -78,11 +77,13 @@ export { BunLibraryBuilder } from "./builders/bun-library-builder.js";
 
 export type {
 	ApiModelOptions,
+	BuildMode,
 	BuildResult,
-	BuildTarget,
 	BunLibraryBuilderOptions,
 	CopyPatternConfig,
 	EntryPoints,
+	PublishProtocol,
+	PublishTarget,
 	TransformFilesCallback,
 	TransformFilesContext,
 	TransformPackageJsonFn,

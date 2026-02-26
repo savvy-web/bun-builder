@@ -22,7 +22,7 @@ extending its functionality.
 For advanced use cases, use the class directly instead of the static `create()` method:
 
 ```typescript
-import type { BuildResult, BuildTarget } from '@savvy-web/bun-builder';
+import type { BuildResult, BuildMode } from '@savvy-web/bun-builder';
 import { BunLibraryBuilder } from '@savvy-web/bun-builder';
 
 async function buildLibrary(): Promise<void> {
@@ -43,7 +43,7 @@ async function buildLibrary(): Promise<void> {
 
   // Access build information
   for (const result of results) {
-    console.log(`Target: ${result.target}`);
+    console.log(`Mode: ${result.mode}`);
     console.log(`Duration: ${result.duration}ms`);
     console.log(`Output files: ${result.outputs.length}`);
   }
@@ -52,9 +52,9 @@ async function buildLibrary(): Promise<void> {
 buildLibrary();
 ```
 
-### Building Single Targets
+### Building Single Modes
 
-Use the `build()` method for more control over individual targets:
+Use the `build()` method for more control over individual build modes:
 
 ```typescript
 import type { BuildResult } from '@savvy-web/bun-builder';
@@ -63,7 +63,7 @@ import { BunLibraryBuilder } from '@savvy-web/bun-builder';
 async function buildNpmOnly(): Promise<void> {
   const builder = new BunLibraryBuilder({});
 
-  // Build only the npm target (no banner, less logging)
+  // Build only the npm mode (no banner, less logging)
   const result: BuildResult = await builder.build('npm');
 
   if (!result.success) {
@@ -80,7 +80,7 @@ async function buildNpmOnly(): Promise<void> {
 ```typescript
 interface BuildResult {
   success: boolean;          // Whether build succeeded
-  target: 'dev' | 'npm';     // Build target
+  mode: 'dev' | 'npm';      // Build mode
   outdir: string;            // Absolute path to output directory
   outputs: string[];         // Absolute paths to output files
   duration: number;          // Build duration in milliseconds
@@ -163,7 +163,7 @@ const transformFiles: TransformFilesCallback = async (context) => {
   const manifest = {
     version: '1.0.0',
     buildDate: new Date().toISOString(),
-    target: context.target,
+    mode: context.mode,
     files: Array.from(context.filesArray),
   };
 
@@ -212,8 +212,8 @@ export default BunLibraryBuilder.create({ transformFiles });
 import type { TransformFilesCallback } from '@savvy-web/bun-builder';
 
 const transformFiles: TransformFilesCallback = async (context) => {
-  // Only for npm target
-  if (context.target !== 'npm') return;
+  // Only for npm mode
+  if (context.mode !== 'npm') return;
 
   // Add npm-specific files
   const npmrc = 'registry=https://registry.npmjs.org/';
@@ -479,7 +479,7 @@ async function build(): Promise<void> {
   if (failed.length > 0) {
     console.error(`${failed.length} target(s) failed`);
     for (const result of failed) {
-      console.error(`  - ${result.target}: ${result.errors?.[0]?.message}`);
+      console.error(`  - ${result.mode}: ${result.errors?.[0]?.message}`);
     }
     process.exit(1);
   }
@@ -500,8 +500,11 @@ All types are exported for use in your build configuration:
 import type {
   // Main builder types
   BunLibraryBuilderOptions,
-  BuildTarget,
+  BuildMode,
   BuildResult,
+
+  // Publish target
+  PublishTarget,
 
   // Transform types
   TransformPackageJsonFn,

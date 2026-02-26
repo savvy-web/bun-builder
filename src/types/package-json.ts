@@ -330,6 +330,19 @@ export namespace PackageJson {
 		 * @defaultValue `'latest'`
 		 */
 		tag?: string;
+		/**
+		 * Publish targets for multi-registry publishing.
+		 *
+		 * @remarks
+		 * Each target describes a publish destination. The builder's transform
+		 * and transformFiles callbacks are invoked once per target, allowing
+		 * per-registry customization.
+		 *
+		 * Supports shorthand strings (`"npm"`, `"github"`, `"jsr"`, or a URL)
+		 * and full target objects with `protocol`, `registry`, `directory`,
+		 * `access`, `provenance`, and `tag` properties.
+		 */
+		targets?: Array<Record<string, JsonValue> | string>;
 	}
 
 	/**

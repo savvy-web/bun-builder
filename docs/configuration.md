@@ -66,17 +66,17 @@ export default BunLibraryBuilder.create({
 
 ### `targets`
 
-Build targets to include in the build.
+Build modes to include in the build.
 
 | Property | Type | Default |
 | --- | --- | --- |
-| `targets` | `('dev' \| 'npm')[]` | `['dev', 'npm']` |
+| `targets` | `BuildMode[]` | `['dev', 'npm']` |
 
 Can be overridden via CLI with `--env-mode dev` or `--env-mode npm`.
 
 ```typescript
 export default BunLibraryBuilder.create({
-  targets: ['npm'], // Only build npm target
+  targets: ['npm'], // Only build npm mode
 });
 ```
 
@@ -314,13 +314,13 @@ Transform function to modify package.json before it is saved.
 | --- | --- | --- |
 | `transform` | `TransformPackageJsonFn` | - |
 
-Called after all standard transformations. Allows target-specific modifications.
+Called after all standard transformations. Allows mode-specific modifications.
 
 ```typescript
 import type { TransformPackageJsonFn, PackageJson } from '@savvy-web/bun-builder';
 
-const transform: TransformPackageJsonFn = ({ target, pkg }): PackageJson => {
-  if (target === 'npm') {
+const transform: TransformPackageJsonFn = ({ mode, target, pkg }): PackageJson => {
+  if (mode === 'npm') {
     // Remove dev-only fields for npm publishing
     delete pkg.devDependencies;
     delete pkg.scripts;
@@ -335,7 +335,8 @@ export default BunLibraryBuilder.create({ transform });
 
 ```typescript
 type TransformPackageJsonFn = (context: {
-  target: 'dev' | 'npm';
+  mode: BuildMode;
+  target: PublishTarget | undefined;
   pkg: PackageJson;
 }) => PackageJson;
 ```
@@ -358,7 +359,7 @@ const transformFiles: TransformFilesCallback = async (context) => {
   // Add a generated file
   const metadata = JSON.stringify({
     buildDate: new Date().toISOString(),
-    target: context.target,
+    mode: context.mode,
   });
   context.outputs.set('build-metadata.json', metadata);
   context.filesArray.add('build-metadata.json');
@@ -373,7 +374,8 @@ export default BunLibraryBuilder.create({ transformFiles });
 | --- | --- | --- |
 | `outputs` | `Map<string, Uint8Array\|string>` | Map of output filenames to content |
 | `filesArray` | `Set<string>` | Files included in package.json `files` field |
-| `target` | `'dev' \| 'npm'` | Current build target |
+| `mode` | `BuildMode` | Current build mode |
+| `target` | `PublishTarget \| undefined` | Current publish target, if any |
 
 ---
 
@@ -638,8 +640,8 @@ const options: BunLibraryBuilderOptions = {
   },
 
   // Custom package.json transformation
-  transform({ target, pkg }): PackageJson {
-    if (target === 'npm') {
+  transform({ mode, target, pkg }): PackageJson {
+    if (mode === 'npm') {
       delete pkg.devDependencies;
     }
     return pkg;
