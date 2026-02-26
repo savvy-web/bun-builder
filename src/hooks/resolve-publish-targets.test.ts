@@ -99,8 +99,8 @@ describe("resolvePublishTargets", () => {
 			const [target] = resolvePublishTargets(pkg, CWD, OUTDIR);
 
 			expect(target).toBeDefined();
-			expect(target!.protocol).toBe("npm");
-			expect(target!.registry).toBe("http://localhost:4873/");
+			expect(target?.protocol).toBe("npm");
+			expect(target?.registry).toBe("http://localhost:4873/");
 		});
 
 		test("throws on unknown shorthand string", () => {
@@ -147,8 +147,8 @@ describe("resolvePublishTargets", () => {
 			const [target] = resolvePublishTargets(pkg, CWD, OUTDIR);
 
 			expect(target).toBeDefined();
-			expect(target!.protocol).toBe("jsr");
-			expect(target!.registry).toBeNull();
+			expect(target?.protocol).toBe("jsr");
+			expect(target?.registry).toBeNull();
 		});
 
 		test("defaults protocol to npm when not specified", () => {
@@ -158,7 +158,7 @@ describe("resolvePublishTargets", () => {
 			};
 			const [target] = resolvePublishTargets(pkg, CWD, OUTDIR);
 
-			expect(target!.protocol).toBe("npm");
+			expect(target?.protocol).toBe("npm");
 		});
 
 		test("defaults registry to npmjs.org for npm protocol", () => {
@@ -168,7 +168,7 @@ describe("resolvePublishTargets", () => {
 			};
 			const [target] = resolvePublishTargets(pkg, CWD, OUTDIR);
 
-			expect(target!.registry).toBe("https://registry.npmjs.org/");
+			expect(target?.registry).toBe("https://registry.npmjs.org/");
 		});
 
 		test("defaults provenance to false", () => {
@@ -178,7 +178,7 @@ describe("resolvePublishTargets", () => {
 			};
 			const [target] = resolvePublishTargets(pkg, CWD, OUTDIR);
 
-			expect(target!.provenance).toBe(false);
+			expect(target?.provenance).toBe(false);
 		});
 
 		test("defaults tag to 'latest'", () => {
@@ -188,7 +188,7 @@ describe("resolvePublishTargets", () => {
 			};
 			const [target] = resolvePublishTargets(pkg, CWD, OUTDIR);
 
-			expect(target!.tag).toBe("latest");
+			expect(target?.tag).toBe("latest");
 		});
 	});
 
@@ -200,7 +200,7 @@ describe("resolvePublishTargets", () => {
 			};
 			const [target] = resolvePublishTargets(pkg, CWD, OUTDIR);
 
-			expect(target!.access).toBe("public");
+			expect(target?.access).toBe("public");
 		});
 
 		test("uses publishConfig.directory as default directory", () => {
@@ -210,7 +210,7 @@ describe("resolvePublishTargets", () => {
 			};
 			const [target] = resolvePublishTargets(pkg, CWD, OUTDIR);
 
-			expect(target!.directory).toBe("/project/dist/custom");
+			expect(target?.directory).toBe("/project/dist/custom");
 		});
 
 		test("target directory overrides publishConfig.directory", () => {
@@ -223,7 +223,7 @@ describe("resolvePublishTargets", () => {
 			};
 			const [target] = resolvePublishTargets(pkg, CWD, OUTDIR);
 
-			expect(target!.directory).toBe("/project/dist/override");
+			expect(target?.directory).toBe("/project/dist/override");
 		});
 
 		test("falls back to outdir when no directory specified", () => {
@@ -233,7 +233,7 @@ describe("resolvePublishTargets", () => {
 			};
 			const [target] = resolvePublishTargets(pkg, CWD, OUTDIR);
 
-			expect(target!.directory).toBe(OUTDIR);
+			expect(target?.directory).toBe(OUTDIR);
 		});
 
 		test("target access overrides publishConfig.access", () => {
@@ -246,7 +246,7 @@ describe("resolvePublishTargets", () => {
 			};
 			const [target] = resolvePublishTargets(pkg, CWD, OUTDIR);
 
-			expect(target!.access).toBe("public");
+			expect(target?.access).toBe("public");
 		});
 	});
 
@@ -263,10 +263,10 @@ describe("resolvePublishTargets", () => {
 
 			expect(result).toHaveLength(3);
 			const [npm, github, jsr] = result;
-			expect(npm!.registry).toBe("https://registry.npmjs.org/");
-			expect(github!.registry).toBe("https://npm.pkg.github.com/");
-			expect(jsr!.protocol).toBe("jsr");
-			expect(jsr!.registry).toBeNull();
+			expect(npm?.registry).toBe("https://registry.npmjs.org/");
+			expect(github?.registry).toBe("https://npm.pkg.github.com/");
+			expect(jsr?.protocol).toBe("jsr");
+			expect(jsr?.registry).toBeNull();
 		});
 	});
 });

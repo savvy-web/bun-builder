@@ -3,32 +3,18 @@ status: current
 module: bun-builder
 category: architecture
 created: 2026-01-26
-updated: 2026-02-25
-last-synced: 2026-02-25
+updated: 2026-02-26
+last-synced: 2026-02-26
 completeness: 100
 related: []
 dependencies: []
 sync-notes: |
-  Synced with feat/target-vs-mode branch changes:
-  - BuildTarget type renamed to BuildMode (values still "dev" | "npm")
-  - BuildResult.target renamed to BuildResult.mode
-  - BuildContext.target renamed to BuildContext.mode
-  - BunLibraryBuilder.DEFAULT_TARGETS renamed to DEFAULT_MODES
-  - resolveTargets() renamed to resolveModes()
-  - run(targets?) renamed to run(modes?), build(target) renamed to build(mode)
-  - executeBuild(options, target) renamed to executeBuild(options, mode)
-  - TransformPackageJsonFn context: { mode, target: PublishTarget | undefined, pkg }
-  - TransformFilesContext: .mode (BuildMode) + .target (PublishTarget | undefined)
-  - New PublishTarget interface for publish destination configuration
-  - PublishConfig.targets field added to package-json.ts
-  - PublishTarget type tightened: protocol is PublishProtocol ("npm"|"jsr"),
-    registry is string|null, access/provenance/tag are required, no index signature
-  - New PublishProtocol type exported ("npm"|"jsr")
-  - New resolvePublishTargets() function in build-lifecycle.ts
-  - BuildContext now includes publishTargets: PublishTarget[]
-  - Phase 6 (transformFiles) and Phase 8 (writePackageJson) iterate over publish targets
-  - publishConfig.targets supports shorthand strings ("npm","github","jsr", URLs)
-  - Stale tsdocLint: true removed from TSDoc examples
+  Synced with feat/eslint-10 branch changes:
+  - ESLint upgraded from v9 to v10
+  - eslint-plugin-tsdoc upgraded from 0.5.0 to 0.5.2 (uses context.sourceCode
+    and context.cwd with fallbacks for ESLint 10 compatibility)
+  - @typescript-eslint/parser upgraded from ^8.55.0 to ^8.56.0
+  - No source code changes required; plugin handles ESLint 10 natively
 ---
 
 # Bun Builder - Architecture
@@ -2136,9 +2122,9 @@ const merged = mergeApiModels({
 
 **TSDoc Validation:**
 
-- **eslint**: ESLint core for programmatic linting
+- **eslint**: ESLint 10 core for programmatic linting
 - **@typescript-eslint/parser**: TypeScript parser for ESLint
-- **eslint-plugin-tsdoc**: TSDoc validation rules
+- **eslint-plugin-tsdoc**: TSDoc validation rules (0.5.2+, ESLint 10 compatible)
 
 **Package.json Processing:**
 
