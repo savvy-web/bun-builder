@@ -1508,8 +1508,16 @@ export async function runApiExtractor(
 				},
 			});
 
+			// Read per-entry API model for merging — do this before the success check
+			// because the docModel JSON is still generated even when DTS rollup fails
+			// (e.g., due to forgotten exports).
+			if (perEntryApiModelPath && existsSync(perEntryApiModelPath)) {
+				const modelContent = await readFile(perEntryApiModelPath, "utf-8");
+				perEntryModels.set(entryName, JSON.parse(modelContent) as Record<string, unknown>);
+			}
+
 			if (!extractorResult.succeeded) {
-				logger.warn(`API Extractor failed for entry "${entryName}", skipping`);
+				logger.warn(`API Extractor failed for entry "${entryName}", skipping DTS rollup`);
 				continue;
 			}
 
@@ -1520,11 +1528,36 @@ export async function runApiExtractor(
 			if (tsdocMetadataPath && existsSync(tsdocMetadataPath)) {
 				tsdocMetadataOutputPath = tsdocMetadataPath;
 			}
+		}
 
-			// Read per-entry API model for merging
-			if (perEntryApiModelPath && existsSync(perEntryApiModelPath)) {
-				const modelContent = await readFile(perEntryApiModelPath, "utf-8");
-				perEntryModels.set(entryName, JSON.parse(modelContent) as Record<string, unknown>);
+		// Merge per-entry API models into the final <unscopedPackageName>.api.json.
+		// This runs before the DTS fallback check because the docModel JSON is still
+		// generated even when DTS rollup fails (e.g., due to forgotten exports).
+		let apiModelPath: string | undefined;
+		if (apiModelConfig.enabled && perEntryModels.size > 0) {
+			apiModelPath = join(context.outdir, apiModelConfig.filename);
+			const packageName = context.packageJson.name ?? "package";
+
+			if (perEntryModels.size === 1) {
+				// Single entry: write directly
+				const [, model] = perEntryModels.entries().next().value as [string, Record<string, unknown>];
+				await writeFile(apiModelPath, `${JSON.stringify(model, null, "\t")}\n`);
+			} else {
+				// Multiple entries: merge
+				const merged = mergeApiModels({
+					perEntryModels,
+					packageName,
+					exportPaths: context.exportPaths,
+				});
+				await writeFile(apiModelPath, `${JSON.stringify(merged, null, "\t")}\n`);
+			}
+
+			logger.success(`Emitted API model: ${basename(apiModelPath)} (excluded from npm publish)`);
+
+			// Clean up temp per-entry API model files
+			for (const [entryName] of perEntryModels) {
+				const tempPath = join(context.outdir, `.tmp-${entryName.replace(/\//g, "-")}.api.json`);
+				await rm(tempPath, { force: true }).catch(() => {});
 			}
 		}
 
@@ -1575,35 +1608,6 @@ export async function runApiExtractor(
 		logger.info(
 			`Emitted ${bundledDtsPaths.length} bundled declaration file(s) in ${BuildLogger.formatTime(timer.elapsed())}`,
 		);
-
-		// Merge per-entry API models if there are multiple entries
-		let apiModelPath: string | undefined;
-		if (apiModelConfig.enabled && perEntryModels.size > 0) {
-			apiModelPath = join(context.outdir, apiModelConfig.filename);
-			const packageName = context.packageJson.name ?? "package";
-
-			if (perEntryModels.size === 1) {
-				// Single entry: write directly
-				const [, model] = perEntryModels.entries().next().value as [string, Record<string, unknown>];
-				await writeFile(apiModelPath, `${JSON.stringify(model, null, "\t")}\n`);
-			} else {
-				// Multiple entries: merge
-				const merged = mergeApiModels({
-					perEntryModels,
-					packageName,
-					exportPaths: context.exportPaths,
-				});
-				await writeFile(apiModelPath, `${JSON.stringify(merged, null, "\t")}\n`);
-			}
-
-			logger.success(`Emitted API model: ${basename(apiModelPath)} (excluded from npm publish)`);
-
-			// Clean up temp per-entry API model files
-			for (const [entryName] of perEntryModels) {
-				const tempPath = join(context.outdir, `.tmp-${entryName.replace(/\//g, "-")}.api.json`);
-				await rm(tempPath, { force: true }).catch(() => {});
-			}
-		}
 
 		if (tsdocMetadataOutputPath && existsSync(tsdocMetadataOutputPath)) {
 			logger.success(`Emitted TSDoc metadata: ${basename(tsdocMetadataOutputPath)}`);
@@ -1996,7 +2000,10 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 	const tsconfigPath = options.tsconfigPath ?? "tsconfig.json";
 	logger.global.info(`Using tsconfig: ${tsconfigPath}`);
 
-	const publishTargets = resolvePublishTargets(packageJson, cwd, outdir);
+	// Publish targets only apply to npm mode — dev builds must never write
+	// to publish-target directories because parallel turbo tasks would race
+	// and the dev mode's `private: true` can overwrite the npm output.
+	const publishTargets = mode === "npm" ? resolvePublishTargets(packageJson, cwd, outdir) : [];
 
 	const context: BuildContext = {
 		cwd,
