@@ -2000,7 +2000,10 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 	const tsconfigPath = options.tsconfigPath ?? "tsconfig.json";
 	logger.global.info(`Using tsconfig: ${tsconfigPath}`);
 
-	const publishTargets = resolvePublishTargets(packageJson, cwd, outdir);
+	// Publish targets only apply to npm mode — dev builds must never write
+	// to publish-target directories because parallel turbo tasks would race
+	// and the dev mode's `private: true` can overwrite the npm output.
+	const publishTargets = mode === "npm" ? resolvePublishTargets(packageJson, cwd, outdir) : [];
 
 	const context: BuildContext = {
 		cwd,
