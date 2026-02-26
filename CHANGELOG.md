@@ -1,5 +1,15 @@
 # @savvy-web/rslib-builder
 
+## 0.6.1
+
+### Patch Changes
+
+* a27852b: Fix multi-target artifact copying and ImportGraph-based DTS filtering
+  * Copy all build artifacts (JS, .d.ts, LICENSE, README) to additional publish target directories, not just package.json
+  * Filter declaration output using ImportGraph to exclude test files (.test.d.ts, .spec.d.ts) and unreachable sources
+  * Add stack trace logging when API Extractor fails for easier debugging
+  * Add E2E test infrastructure with fixture-based build verification
+
 ## 0.6.0
 
 ### Minor Changes
