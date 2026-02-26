@@ -20,7 +20,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { copyFile, mkdir, readFile, rename as renameFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import type { BuildArtifact } from "bun";
@@ -2092,7 +2092,18 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 	// files are excluded from the output.
 	const graph = new ImportGraph({ rootDir: cwd });
 	const tracedResult = graph.traceFromEntries(Object.values(context.entries));
-	const tracedFiles = new Set(tracedResult.files.map((f) => relative(cwd, f).replace(/\.tsx?$/, ".d.ts")));
+
+	if (tracedResult.errors.length > 0) {
+		for (const err of tracedResult.errors) {
+			logger.warn(`ImportGraph: ${err.message}`);
+		}
+	}
+
+	// Fall back to including all declarations when tracing fails entirely
+	const tracedFiles =
+		tracedResult.files.length > 0
+			? new Set(tracedResult.files.map((f) => relative(cwd, f).replace(/\.tsx?$/, ".d.ts")))
+			: undefined;
 
 	// Phase 3: Declaration generation
 	const tempDtsDir = join(cwd, ".bun-builder", "declarations", mode);
@@ -2115,7 +2126,10 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 				apiModelPath,
 				tsconfigPath: tscPath,
 				tsdocConfigPath: tsdocPath,
-			} = await runApiExtractor(context, tempDtsDir, options.apiModel, { bundleless: true, tracedFiles });
+			} = await runApiExtractor(context, tempDtsDir, options.apiModel, {
+				bundleless: true,
+				...(tracedFiles !== undefined ? { tracedFiles } : {}),
+			});
 
 			if (apiModelPath) {
 				filesArray.add(`!${relative(outdir, apiModelPath)}`);
@@ -2133,7 +2147,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 			context,
 			tempDtsDir,
 			mode === "npm" ? options.apiModel : undefined,
-			{ tracedFiles },
+			tracedFiles !== undefined ? { tracedFiles } : undefined,
 		);
 
 		if (bundledDtsPaths) {
@@ -2336,7 +2350,6 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 	for (const publishTarget of writeTargets) {
 		// Copy all build artifacts to additional publish target directories
 		if (publishTarget?.directory && publishTarget.directory !== context.outdir) {
-			const { cpSync, mkdirSync } = await import("node:fs");
 			mkdirSync(publishTarget.directory, { recursive: true });
 			cpSync(context.outdir, publishTarget.directory, { recursive: true });
 		}
