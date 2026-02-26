@@ -401,6 +401,7 @@ export class BunCatalogResolver {
 	 * @internal
 	 */
 	private async resolveWorkspaceVersion(packageName: string, workspaceRoot: string | null): Promise<string | null> {
+		/* v8 ignore start -- @preserve */
 		if (!workspaceRoot) return null;
 
 		// Try to find the package in the workspace
@@ -424,6 +425,7 @@ export class BunCatalogResolver {
 		}
 
 		return null;
+		/* v8 ignore stop */
 	}
 
 	/**

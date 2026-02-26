@@ -200,8 +200,10 @@ export class BunLibraryBuilder {
 	 * ```
 	 */
 	static async create(options: BunLibraryBuilderOptions = {}): Promise<BuildResult[]> {
+		/* v8 ignore start -- @preserve */
 		const builder = new BunLibraryBuilder(options);
 		return builder.run();
+		/* v8 ignore stop */
 	}
 
 	/**
@@ -228,6 +230,7 @@ export class BunLibraryBuilder {
 	 * ```
 	 */
 	async run(modes?: BuildMode[]): Promise<BuildResult[]> {
+		/* v8 ignore start -- @preserve */
 		const logger = BuildLogger.createLogger("bun-builder");
 		const timer = BuildLogger.createTimer();
 
@@ -274,6 +277,7 @@ export class BunLibraryBuilder {
 		}
 
 		return results;
+		/* v8 ignore stop */
 	}
 
 	/**
@@ -301,7 +305,9 @@ export class BunLibraryBuilder {
 	 * ```
 	 */
 	async build(mode: BuildMode): Promise<BuildResult> {
+		/* v8 ignore start -- @preserve */
 		return executeBuild(this.options, mode);
+		/* v8 ignore stop */
 	}
 
 	/**

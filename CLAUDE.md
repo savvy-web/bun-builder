@@ -17,16 +17,21 @@ API for TypeScript packages.
 
 ## Design Documentation
 
-For detailed architecture understanding, load the design doc:
+Load design docs for detailed reference on specific topics:
 
---> `@./.claude/design/bun-builder/architecture.md`
+- Architecture overview -> `@./.claude/design/bun-builder/architecture.md`
+- Build lifecycle (12 phases) -> `@./.claude/design/bun-builder/build-lifecycle.md`
+- Configuration reference -> `@./.claude/design/bun-builder/configuration-reference.md`
+- API model options -> `@./.claude/design/bun-builder/api-model-options.md`
+- Testing strategy -> `@./.claude/design/bun-builder/testing-strategy.md`
 
-**Load when:**
+**When to load:**
 
-- Understanding the build lifecycle phases
-- Modifying entry extraction or catalog resolution
-- Debugging build output or package.json transformation
-- Extending the builder API with new options
+- **Architecture**: Understanding system design, component responsibilities, data flow
+- **Build lifecycle**: Debugging build phases, modifying pipeline, tool integrations
+- **Configuration**: Adding/modifying builder options, publish targets
+- **API model**: Working on TSDoc, API Extractor, declaration bundling, forgotten exports
+- **Testing**: Writing tests, debugging coverage, E2E infrastructure
 
 ## Architecture
 
@@ -56,7 +61,9 @@ bun-builder/
 │   ├── public/                  # Static files (tsconfig JSONs)
 │   └── types/                   # TypeScript type definitions
 │       ├── builder-types.ts
-│       └── package-json.ts
+│       ├── global.d.ts
+│       ├── package-json.ts
+│       └── tsconfig-json.d.ts
 ├── bun.config.ts                # Self-builds using BunLibraryBuilder
 ├── package.json
 └── tsconfig.json
@@ -83,42 +90,6 @@ export default BunLibraryBuilder.create({
 });
 ```
 
-#### Build Pipeline
-
-The build lifecycle in `src/hooks/build-lifecycle.ts` orchestrates:
-
-1. **Configuration Phase**: Merge `DEFAULT_OPTIONS` with user options, detect entries from package.json
-2. **Pre-Build Phase**: TSDoc linting via ESLint (files discovered by `ImportGraph`)
-3. **Bundle Phase**: `Bun.build()` with ESM output (bundled) or individual file compilation (bundleless)
-4. **Declaration Phase**: tsgo generates `.d.ts`; API Extractor rolls up (bundled) or raw `.d.ts` emitted (bundleless)
-5. **TSDoc/Forgotten Export Reporting**: Warnings collected with source location info and reported per `tsdoc.warnings` / `forgottenExports`
-6. **Package.json Phase**: Transform exports, resolve catalogs, generate files array
-7. **Copy Phase**: Copy README, LICENSE, public/*
-
-#### Bundleless Mode (`bundle: false`)
-
-When `bundle: false`, the build preserves source directory structure:
-
-- `ImportGraph.traceFromEntries()` discovers all reachable source files from entry points
-- Each file is compiled individually via `Bun.build()` with `packages: "external"`
-- Raw tsgo `.d.ts` files are emitted directly (no DTS rollup)
-- API Extractor still runs for `.api.json` generation if `apiModel` is enabled
-- `src/` prefix is stripped: `src/utils/helper.ts` becomes `utils/helper.js`
-
-#### TSDoc Warnings and Forgotten Exports
-
-API Extractor TSDoc warnings are collected with source file location info and
-reported after all entries are processed. Controlled via `apiModel.tsdoc.warnings`:
-`"fail"` (default in CI), `"log"` (default locally), `"none"`.
-
-Forgotten export warnings also include source location. Controlled via
-`apiModel.forgottenExports`: `"error"` (CI), `"include"` (local), `"ignore"`.
-
-#### API Extractor Configuration
-
-- `tsdoc.json` loaded via `TSDocConfigFile.loadForFolder()` for custom tag definitions
-- `enumMemberOrder: "preserve"` preserves source-order enum members in API model
-
 ### Build Modes
 
 Two build modes with different optimizations:
@@ -135,53 +106,14 @@ bun run bun.config.ts --env-mode dev
 bun run bun.config.ts --env-mode npm
 ```
 
-### Build Output
-
-Output depends on the `bundle` option:
-
-**Bundled mode** (`bundle: true`, default):
-
-- Single-file outputs per export entry point
-- TypeScript declarations rolled up via API Extractor
-- Optimized for npm publishing and fast runtime loading
-
-**Bundleless mode** (`bundle: false`):
-
-- Source directory structure preserved in output
-- Raw `.d.ts` files emitted per source file (no DTS rollup)
-- API model still generated if `apiModel` is enabled
-
 ## Bun Catalog Protocol
 
-Bun uses a different catalog format than pnpm. Catalogs are defined in the root
-package.json under the `workspaces` field:
+Bun catalogs differ from pnpm. Defined in root `package.json` under
+`workspaces.catalog` (default) and `workspaces.catalogs.<name>` (named).
 
-```json
-{
-  "workspaces": {
-    "packages": ["packages/*"],
-    "catalog": {
-      "react": "^19.0.0"
-    },
-    "catalogs": {
-      "testing": {
-        "vitest": "^4.0.0"
-      }
-    }
-  }
-}
-```
+Usage: `"catalog:"` for default catalog, `"catalog:<name>"` for named catalogs.
 
-Usage in package.json:
-
-```json
-{
-  "dependencies": {
-    "react": "catalog:",          // From default catalog
-    "vitest": "catalog:testing"   // From named catalog
-  }
-}
-```
+See [Bun Workspaces](https://bun.sh/docs/install/workspaces) for full reference.
 
 ## Testing
 
@@ -216,4 +148,4 @@ bun run typecheck
 
 - [Bun Documentation](https://bun.sh/docs)
 - [Bun.build() API](https://bun.sh/docs/bundler)
-- [Bun Workspaces](https://bun.sh/docs/install/workspaces)
+- [API Extractor](https://api-extractor.com/)

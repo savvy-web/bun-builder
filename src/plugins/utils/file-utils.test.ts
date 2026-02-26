@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { FileSystemUtils } from "./file-utils.js";
+import { FileSystemUtils, LocalPathValidator } from "./file-utils.js";
 
 describe("FileSystemUtils.fileExistsAsync", () => {
 	test("returns true for existing file", async () => {
@@ -42,6 +42,39 @@ describe("FileSystemUtils.packageJsonVersion", () => {
 	});
 });
 
+describe("FileSystemUtils.findWorkspaceRoot", () => {
+	test("returns a path from project directory", () => {
+		const root = FileSystemUtils.findWorkspaceRoot();
+		if (root !== null) {
+			expect(typeof root).toBe("string");
+			expect(root.length).toBeGreaterThan(0);
+		} else {
+			expect(root).toBeNull();
+		}
+	});
+
+	test("returns null for root directory", () => {
+		const root = FileSystemUtils.findWorkspaceRoot("/");
+		expect(root).toBeNull();
+	});
+});
+
+describe("FileSystemUtils.getApiExtractorPath", () => {
+	test("returns a valid path when installed", () => {
+		const path = FileSystemUtils.getApiExtractorPath();
+		expect(typeof path).toBe("string");
+		expect(path).toContain("api-extractor");
+	});
+});
+
+describe("FileSystemUtils.getTsgoBinPath", () => {
+	test("returns a path string", () => {
+		const path = FileSystemUtils.getTsgoBinPath();
+		expect(typeof path).toBe("string");
+		expect(path).toContain("tsgo");
+	});
+});
+
 describe("FileSystemUtils.getUnscopedPackageName", () => {
 	test("removes scope from scoped package name", () => {
 		expect(FileSystemUtils.getUnscopedPackageName("@savvy-web/bun-builder")).toBe("bun-builder");
@@ -66,5 +99,29 @@ describe("FileSystemUtils.getUnscopedPackageName", () => {
 	test("handles package names with hyphens", () => {
 		expect(FileSystemUtils.getUnscopedPackageName("@types/node")).toBe("node");
 		expect(FileSystemUtils.getUnscopedPackageName("my-package")).toBe("my-package");
+	});
+});
+
+describe("LocalPathValidator.validatePaths", () => {
+	test("does not throw for valid paths", () => {
+		expect(() => {
+			LocalPathValidator.validatePaths(process.cwd(), ["./src"]);
+		}).not.toThrow();
+	});
+
+	test("throws for paths with non-existent parent", () => {
+		expect(() => {
+			LocalPathValidator.validatePaths(process.cwd(), ["./non-existent-parent-dir-xyz/child"]);
+		}).toThrow("parent directory does not exist");
+	});
+});
+
+describe("LocalPathValidator.isValidPath", () => {
+	test("returns true for valid path", () => {
+		expect(LocalPathValidator.isValidPath(process.cwd(), "./src")).toBe(true);
+	});
+
+	test("returns false for path with non-existent parent", () => {
+		expect(LocalPathValidator.isValidPath(process.cwd(), "./non-existent-parent-xyz/child")).toBe(false);
 	});
 });

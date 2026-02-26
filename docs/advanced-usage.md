@@ -11,6 +11,7 @@ extending its functionality.
 - [Custom Bun Plugins](#custom-bun-plugins)
 - [Monorepo Integration](#monorepo-integration)
 - [CI/CD Integration](#cicd-integration)
+- [Testing](#testing)
 - [Type Exports](#type-exports)
 
 ---
@@ -435,6 +436,26 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 ```
 
+### Multi-Target Publishing
+
+When `publishConfig.targets` is configured in your source package.json, all
+build artifacts (JS bundles, `.d.ts` declarations, LICENSE, README, and a
+per-target package.json) are copied to each additional publish target directory.
+This allows publishing the same build to multiple registries (e.g., npm and
+GitHub Packages) from a single build run.
+
+```yaml
+      - name: Publish to npm
+        run: npm publish ./dist/npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to GitHub Packages
+        run: npm publish ./dist/github
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
 ### Environment-Aware Configuration
 
 The builder automatically adjusts behavior based on CI detection, but you can
@@ -488,6 +509,31 @@ async function build(): Promise<void> {
 }
 
 build();
+```
+
+---
+
+## Testing
+
+### E2E Tests
+
+The project includes end-to-end tests that verify the full build pipeline. E2E
+tests use isolated temp directories with fixture packages to exercise
+`BunLibraryBuilder` in realistic scenarios:
+
+- **Bundle mode** -- Validates bundled JS and rolled-up `.d.ts` output
+- **Publish targets** -- Validates that all artifacts are copied to each
+  `publishConfig.targets` directory
+
+E2E tests live in `__test__/e2e/` with shared utilities in `__test__/e2e/utils/`
+and fixture packages in `__test__/fixtures/`.
+
+```bash
+# Run all tests (unit + E2E)
+bun test
+
+# Run E2E tests only
+bun test __test__/e2e/
 ```
 
 ---

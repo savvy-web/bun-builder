@@ -20,7 +20,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { copyFile, mkdir, readFile, rename as renameFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import type { BuildArtifact } from "bun";
@@ -566,6 +566,7 @@ interface ResolvedLintOptions {
  * @internal
  */
 export async function runTsDocLint(context: BuildContext, options: ResolvedLintOptions): Promise<void> {
+	/* v8 ignore start -- @preserve */
 	const logger = BuildLogger.createLogger("tsdoc-lint");
 
 	if (options.enabled === false) {
@@ -708,6 +709,7 @@ export async function runTsDocLint(context: BuildContext, options: ResolvedLintO
 	} else if (warningCount > 0) {
 		logger.warn(`TSDoc validation warnings:\n${formatted}`);
 	}
+	/* v8 ignore stop */
 }
 
 /**
@@ -729,6 +731,7 @@ export async function runTsDocLint(context: BuildContext, options: ResolvedLintO
  * @internal
  */
 export async function runBunBuild(context: BuildContext): Promise<{ outputs: BuildArtifact[]; success: boolean }> {
+	/* v8 ignore start -- @preserve */
 	const logger = BuildLogger.createEnvLogger(context.mode);
 	const timer = BuildLogger.createTimer();
 
@@ -900,6 +903,7 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
 	logger.info(`Bundled ${renamedOutputs.length} file(s) in ${BuildLogger.formatTime(timer.elapsed())}`);
 
 	return { outputs: renamedOutputs, success: true };
+	/* v8 ignore stop */
 }
 
 /**
@@ -920,6 +924,7 @@ export async function runBunBuild(context: BuildContext): Promise<{ outputs: Bui
  * @internal
  */
 export async function runBundlessBuild(context: BuildContext): Promise<{ outputs: BuildArtifact[]; success: boolean }> {
+	/* v8 ignore start -- @preserve */
 	const logger = BuildLogger.createEnvLogger(context.mode);
 	const timer = BuildLogger.createTimer();
 
@@ -1021,6 +1026,7 @@ export async function runBundlessBuild(context: BuildContext): Promise<{ outputs
 	logger.info(`Compiled ${renamedOutputs.length} file(s) in ${BuildLogger.formatTime(timer.elapsed())}`);
 
 	return { outputs: renamedOutputs, success: true };
+	/* v8 ignore stop */
 }
 
 /**
@@ -1041,6 +1047,7 @@ export async function runBundlessBuild(context: BuildContext): Promise<{ outputs
  * @internal
  */
 export async function runTsgoGeneration(context: BuildContext, tempDtsDir: string): Promise<boolean> {
+	/* v8 ignore start -- @preserve */
 	const logger = BuildLogger.createEnvLogger(context.mode);
 	const timer = BuildLogger.createTimer();
 
@@ -1108,6 +1115,7 @@ export async function runTsgoGeneration(context: BuildContext, tempDtsDir: strin
 			resolve(false);
 		});
 	});
+	/* v8 ignore stop */
 }
 
 /**
@@ -1124,13 +1132,20 @@ export async function runTsgoGeneration(context: BuildContext, tempDtsDir: strin
  *
  * @internal
  */
-async function copyUnbundledDeclarations(context: BuildContext, tempDtsDir: string): Promise<{ dtsFiles: string[] }> {
+async function copyUnbundledDeclarations(
+	context: BuildContext,
+	tempDtsDir: string,
+	allowedFiles?: Set<string>,
+): Promise<{ dtsFiles: string[] }> {
+	/* v8 ignore start -- @preserve */
 	const logger = BuildLogger.createEnvLogger(context.mode);
 
 	// Find all .d.ts files in the temp directory using Bun.Glob
 	const dtsGlob = new Bun.Glob("**/*.d.ts");
 	const dtsFiles: string[] = [];
 	for await (const file of dtsGlob.scan({ cwd: tempDtsDir })) {
+		// Only include files reachable from entry points when an allowlist is provided
+		if (allowedFiles && !allowedFiles.has(file)) continue;
 		dtsFiles.push(file);
 	}
 	const copiedFiles: string[] = [];
@@ -1148,6 +1163,7 @@ async function copyUnbundledDeclarations(context: BuildContext, tempDtsDir: stri
 
 	logger.info(`Copied ${copiedFiles.length} unbundled declaration file(s)`);
 	return { dtsFiles: copiedFiles };
+	/* v8 ignore stop */
 }
 
 /**
@@ -1160,6 +1176,7 @@ async function copyUnbundledDeclarations(context: BuildContext, tempDtsDir: stri
  * @internal
  */
 function resolveDtsPath(sourcePath: string, tempDtsDir: string): string | undefined {
+	/* v8 ignore start -- @preserve */
 	const normalizedPath = sourcePath.replace(/^\.\//, "").replace(/\.tsx?$/, ".d.ts");
 	let tempDtsPath = join(tempDtsDir, normalizedPath);
 
@@ -1173,6 +1190,7 @@ function resolveDtsPath(sourcePath: string, tempDtsDir: string): string | undefi
 	}
 
 	return existsSync(tempDtsPath) ? tempDtsPath : undefined;
+	/* v8 ignore stop */
 }
 
 /**
@@ -1326,7 +1344,7 @@ export async function runApiExtractor(
 	context: BuildContext,
 	tempDtsDir: string,
 	apiModel?: ApiModelOptions | boolean,
-	options?: { bundleless?: boolean },
+	options?: { bundleless?: boolean; tracedFiles?: Set<string> },
 ): Promise<{
 	bundledDtsPaths?: string[];
 	apiModelPath?: string;
@@ -1335,6 +1353,7 @@ export async function runApiExtractor(
 	tsdocConfigPath?: string;
 	dtsFiles?: string[];
 }> {
+	/* v8 ignore start -- @preserve */
 	const logger = BuildLogger.createEnvLogger(context.mode);
 	const timer = BuildLogger.createTimer();
 
@@ -1343,7 +1362,7 @@ export async function runApiExtractor(
 		FileSystemUtils.getApiExtractorPath();
 	} catch {
 		logger.warn("API Extractor not found, copying unbundled declarations");
-		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
+		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir, options?.tracedFiles);
 		return { dtsFiles };
 	}
 
@@ -1351,7 +1370,7 @@ export async function runApiExtractor(
 	const exportEntries = Object.entries(context.entries).filter(([name]) => !name.startsWith("bin/"));
 	if (exportEntries.length === 0) {
 		logger.warn("No export entry points found for API Extractor");
-		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
+		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir, options?.tracedFiles);
 		return { dtsFiles };
 	}
 
@@ -1563,7 +1582,7 @@ export async function runApiExtractor(
 
 		if (!isBundleless && bundledDtsPaths.length === 0) {
 			logger.warn("API Extractor failed for all entries, copying unbundled declarations");
-			const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
+			const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir, options?.tracedFiles);
 			return { dtsFiles };
 		}
 
@@ -1642,7 +1661,7 @@ export async function runApiExtractor(
 		let tsdocConfigPath: string | undefined;
 		if (apiModelConfig.enabled) {
 			try {
-				tsdocConfigPath = await TsDocConfigBuilder.writeConfigFile(apiModelConfig.tsdoc ?? {}, context.outdir);
+				tsdocConfigPath = await TsDocConfigBuilder.writeConfigFile(apiModelConfig.tsdoc ?? {}, context.outdir, true);
 				logger.success(`Emitted tsdoc.json (excluded from npm publish)`);
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1660,9 +1679,13 @@ export async function runApiExtractor(
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		logger.warn(`API Extractor error: ${errorMessage}, copying unbundled declarations`);
-		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
+		if (error instanceof Error && error.stack) {
+			logger.warn(error.stack);
+		}
+		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir, options?.tracedFiles);
 		return { dtsFiles };
 	}
+	/* v8 ignore stop */
 }
 
 /**
@@ -1962,6 +1985,7 @@ export class LocalPathCopier {
  * @internal
  */
 export async function executeBuild(options: BunLibraryBuilderOptions, mode: BuildMode): Promise<BuildResult> {
+	/* v8 ignore start -- @preserve */
 	const cwd = process.cwd();
 	const outdir = join(cwd, "dist", mode);
 	const logger = BuildLogger.createEnvLogger(mode);
@@ -2078,6 +2102,24 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 		}
 	}
 
+	// Trace import graph to determine which source files are reachable from entry points.
+	// This is used to filter declaration files so test files and other non-reachable
+	// files are excluded from the output.
+	const graph = new ImportGraph({ rootDir: cwd });
+	const tracedResult = graph.traceFromEntries(Object.values(context.entries));
+
+	if (tracedResult.errors.length > 0) {
+		for (const err of tracedResult.errors) {
+			logger.warn(`ImportGraph: ${err.message}`);
+		}
+	}
+
+	// Fall back to including all declarations when tracing fails entirely
+	const tracedFiles =
+		tracedResult.files.length > 0
+			? new Set(tracedResult.files.map((f) => relative(cwd, f).replace(/\.tsx?$/, ".d.ts")))
+			: undefined;
+
 	// Phase 3: Declaration generation
 	const tempDtsDir = join(cwd, ".bun-builder", "declarations", mode);
 	await rm(tempDtsDir, { recursive: true, force: true });
@@ -2088,7 +2130,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 		logger.warn("Declaration generation failed, continuing without .d.ts files");
 	} else if (!isBundleMode) {
 		// Bundleless mode: copy raw .d.ts files (no DTS rollup)
-		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir);
+		const { dtsFiles } = await copyUnbundledDeclarations(context, tempDtsDir, tracedFiles);
 		for (const file of dtsFiles) {
 			filesArray.add(file);
 		}
@@ -2099,7 +2141,10 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 				apiModelPath,
 				tsconfigPath: tscPath,
 				tsdocConfigPath: tsdocPath,
-			} = await runApiExtractor(context, tempDtsDir, options.apiModel, { bundleless: true });
+			} = await runApiExtractor(context, tempDtsDir, options.apiModel, {
+				bundleless: true,
+				...(tracedFiles !== undefined ? { tracedFiles } : {}),
+			});
 
 			if (apiModelPath) {
 				filesArray.add(`!${relative(outdir, apiModelPath)}`);
@@ -2117,6 +2162,7 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 			context,
 			tempDtsDir,
 			mode === "npm" ? options.apiModel : undefined,
+			tracedFiles !== undefined ? { tracedFiles } : undefined,
 		);
 
 		if (bundledDtsPaths) {
@@ -2317,6 +2363,11 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 		context.publishTargets.length > 0 ? context.publishTargets : [undefined];
 
 	for (const publishTarget of writeTargets) {
+		// Copy all build artifacts to additional publish target directories
+		if (publishTarget?.directory && publishTarget.directory !== context.outdir) {
+			mkdirSync(publishTarget.directory, { recursive: true });
+			cpSync(context.outdir, publishTarget.directory, { recursive: true });
+		}
 		await writePackageJson(context, filesArray, publishTarget);
 	}
 	filesArray.add("package.json");
@@ -2355,4 +2406,5 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 		outputs: outputs.map((o) => o.path),
 		duration: timer.elapsed(),
 	};
+	/* v8 ignore stop */
 }

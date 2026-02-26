@@ -231,6 +231,14 @@ The following fields are removed during transformation:
 | `publishConfig` | Build-time configuration, not needed in output |
 | `scripts` | Build scripts not needed for consumers |
 
+### Publish Targets
+
+When `publishConfig.targets` is configured, the builder copies the complete set
+of build artifacts to each additional target directory before writing the
+per-target `package.json`. This means directories like `dist/github/` contain
+the full build output (JS bundles, `.d.ts` declarations, LICENSE, README) -- not
+just `package.json`.
+
 ### Private Field
 
 The `private` field is set based on context:
@@ -339,6 +347,17 @@ Source package.json
         |
         v
 Write to dist/npm/package.json
+        |
+        v  (if publishConfig.targets)
++------------------------+
+| Copy all build artifacts
+| to each target directory
+| (JS, .d.ts, LICENSE, README)
++------------------------+
+        |
+        v
+Write per-target package.json
+(e.g., dist/github/package.json)
 ```
 
 ---

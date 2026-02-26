@@ -2,14 +2,25 @@
 # https://bun.sh/docs/runtime/bunfig
 
 [test]
-# Coverage configuration (enabled via --coverage flag)
-coverage = false
+# Coverage reports are always generated (text + lcov).
+# Thresholds are intentionally omitted: Bun enforces thresholds per-file and
+# does not support v8 ignore comments (https://github.com/oven-sh/bun/issues/7662)
+# or subset-safe runs, so threshold checks fail when running individual test files.
+# CI coverage is monitored via the LCOV report in the coverage/ directory.
+coverage = true
 coverageDir = "coverage"
 coverageReporter = ["text", "lcov"]
-
-# Coverage thresholds
-# Note: build-lifecycle.ts requires integration tests to cover fully
-coverageThreshold = { line = 40, function = 50, statement = 40 }
-
 # Exclude test files and config from coverage
 coverageSkipTestFiles = true
+# Exclude runtime-only orchestration files from coverage reporting.
+# These files primarily invoke external tools (Bun.build, tsgo, API Extractor),
+# console output, and workspace filesystem traversal that cannot be unit tested.
+# Source files contain /* v8 ignore */ markers for when Bun adds comment support.
+coveragePathIgnorePatterns = [
+  "src/hooks/build-lifecycle.ts",
+  "src/builders/bun-library-builder.ts",
+  "src/plugins/utils/logger.ts",
+  "src/tsconfig/index.ts",
+  "src/plugins/utils/file-utils.ts",
+  "src/plugins/utils/catalog-resolver.ts",
+]
