@@ -3,8 +3,8 @@ status: current
 module: bun-builder
 category: architecture
 created: 2026-01-26
-updated: 2026-02-26
-last-synced: 2026-02-26
+updated: 2026-02-27
+last-synced: 2026-02-27
 completeness: 95
 related:
   - bun-builder/build-lifecycle.md
@@ -133,12 +133,16 @@ class BunLibraryBuilder {
 
   // Instance methods
   constructor(options?: BunLibraryBuilderOptions)
-  async run(modes?: BuildMode[]): Promise<BuildResult[]>
+  async run(modes?: BuildMode[]): Promise<BuildResult[]>  // Logs result.errors on failure
   async build(mode: BuildMode): Promise<BuildResult>
 }
 
 type BuildMode = "dev" | "npm";
 ```
+
+The `run()` method logs `result.errors` messages when a build returns
+`success: false`, so failures are surfaced in the console output rather than
+silently swallowed.
 
 The `DEFAULT_OPTIONS` static property is merged with user-provided options in the
 constructor: `{ ...BunLibraryBuilder.DEFAULT_OPTIONS, ...options }`. This means
@@ -160,13 +164,13 @@ user explicitly overrides them.
 
 | Function | Purpose |
 | --- | --- |
-| `executeBuild()` | Main orchestrator running all phases |
+| `executeBuild()` | Main orchestrator; wraps phases in try-catch returning `{ success: false, errors }` |
 | `resolvePublishTargets()` | Resolve `publishConfig.targets` into `PublishTarget[]` |
 | `runTsDocLint()` | Pre-build TSDoc validation |
 | `runBunBuild()` | Execute Bun.build() bundling (bundle mode) |
 | `runBundlessBuild()` | Individual file compilation (bundleless mode) |
 | `runTsgoGeneration()` | Generate .d.ts with tsgo |
-| `runApiExtractor()` | Per-entry declaration bundling with API Extractor |
+| `runApiExtractor()` | Per-entry declaration bundling; throws on failure (fail-fast) |
 | `mergeApiModels()` | Merge per-entry API models with canonical reference rewriting |
 | `writePackageJson()` | Transform and write package.json (per publish target) |
 | `copyFiles()` | Copy additional assets to output |
@@ -554,8 +558,10 @@ console.log(JSON.stringify(resolved, null, 2));
 
 **Location:** `src/plugins/utils/tsdoc-config-builder.ts`
 
-**Purpose:** Dynamically generates `tsdoc.json` configuration files for API
-Extractor and documentation tools based on tag group selections.
+**Purpose:** Dynamically generates `tsdoc.json` configuration for API
+Extractor and documentation tools based on tag group selections. Used both
+for in-memory config loading (during API Extractor runs) and on-disk
+persistence (after successful builds).
 
 **Key Features:**
 
@@ -564,7 +570,9 @@ Extractor and documentation tools based on tag group selections.
 - Generates properly formatted tsdoc.json with `$schema` and `supportForTags`
 - Sets `reportUnsupportedHtmlElements: true` in generated config
 - Optimizes output based on group selection (minimal config for all groups)
-- Handles config persistence based on environment (CI vs local)
+- `buildConfigObject()` produces a serializable config for in-memory loading
+  via `TSDocConfigFile.loadFromObject()` (no disk I/O before build)
+- Handles on-disk persistence based on environment (CI vs local)
 - Supports custom tag definitions beyond standard groups
 
 **Static Methods:**
@@ -696,10 +704,10 @@ const result2 = ImportGraph.fromEntries(['./src/index.ts'], { rootDir: process.c
 |       resolve publish targets)                              |
 |    2. Validate local paths (early fail-fast)                |
 |    3. TSDoc Lint (from apiModel.tsdoc.lint)                 |
-|    4a. Bun.build() bundled (bundle!=false)                  |
+|    4a. Bun.build() bundled (splitting: auto or explicit)    |
 |    4b. Bun.build() bundleless (bundle=false, per-file)     |
 |    5. tsgo (generate declarations)                          |
-|    6a. API Extractor DTS rollup (bundle mode)               |
+|    6a. API Extractor DTS rollup (fail-fast on error)        |
 |    6b. Copy raw .d.ts + API Extractor model (bundleless)   |
 |    7. Copy files (README, LICENSE, assets)                  |
 |    8. Transform files (user callback)                       |
@@ -809,6 +817,8 @@ compatible).
 - **Workspace resolution limited**: Only checks `packages/<name>` paths
 - **Bundleless mode limitations**: No tree shaking in bundleless mode; all
   reachable files from entry points are compiled and included in output
+- **Code splitting in bundleless**: Splitting is always `false` in bundleless
+  mode; only bundle mode supports the `splitting` option
 
 ---
 
@@ -1244,9 +1254,12 @@ Source .ts files
          |
          v
 +----------------------------------------+
-| Load TSDocConfigFile                   |
-|   TSDocConfigFile.loadForFolder(cwd)   |
-|   (optional, falls back to defaults)   |
+| Build TSDocConfigFile in-memory        |
+|   TsDocConfigBuilder.buildConfigObject |
+|     from context.options.apiModel.tsdoc|
+|   TSDocConfigFile.loadFromObject()     |
+|   (no disk write before build)         |
+|   Falls back to loadForFolder(cwd)     |
 +----------------------------------------+
          |
          v
@@ -1263,6 +1276,8 @@ Source .ts files
 |   - Run Extractor.invoke()             |
 |   - Collect TSDoc warnings w/ source   |
 |   - Collect forgottenExport w/ source  |
+|   - Collect error diagnostics          |
+|   - Throw on per-entry failure         |
 |   - Read per-entry model for merging   |
 +----------------------------------------+
          |
@@ -1305,9 +1320,10 @@ Source .ts files
          v
 +----------------------------------------+
 | TsDocConfigBuilder (if apiModel)       |
-|   - Build tag config from options      |
+|   - Persist tsdoc.json to dist output  |
 |   - skipCIValidation=true (dist output)|
 |   - Always writes (generated artifact) |
+|   - On-disk write only after success   |
 +----------------------------------------+
          |
          v

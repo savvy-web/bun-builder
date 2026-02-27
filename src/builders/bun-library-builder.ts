@@ -251,6 +251,11 @@ export class BunLibraryBuilder {
 
 				if (!result.success) {
 					logger.error(`Build failed for mode: ${mode}`);
+					if (result.errors) {
+						for (const err of result.errors) {
+							logger.error(err.message);
+						}
+					}
 				}
 			} catch (error) {
 				const errorObj = error instanceof Error ? error : new Error(String(error));

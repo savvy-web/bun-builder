@@ -77,7 +77,8 @@ The main API for building Node.js libraries. Uses Bun.build() for bundling.
 
 **Location**: `src/builders/bun-library-builder.ts`
 
-**Defaults**: `apiModel: true`, `bundle: true` (see `DEFAULT_OPTIONS`).
+**Defaults**: `apiModel: true`, `bundle: true`, `splitting: auto` (see `DEFAULT_OPTIONS`).
+`splitting` defaults to `true` for multi-entry builds, `false` for single-entry.
 
 **Basic Usage**:
 

@@ -3,8 +3,8 @@ status: current
 module: bun-builder
 category: reference
 created: 2026-02-26
-updated: 2026-02-26
-last-synced: 2026-02-26
+updated: 2026-02-27
+last-synced: 2026-02-27
 completeness: 95
 related:
   - bun-builder/architecture.md
@@ -41,6 +41,7 @@ interface BunLibraryBuilderOptions {
   targets?: BuildMode[];
   format?: "esm" | "cjs";
   bundle?: boolean;
+  splitting?: boolean;
   bunTarget?: "bun" | "node" | "browser";
   copyPatterns?: (string | CopyPatternConfig)[];
 
@@ -124,6 +125,44 @@ Output module format for Bun.build().
 When `true`, produces single-file bundles per entry point. When `false`, enables
 bundleless mode: preserves source directory structure with individual file
 compilation. See [Build Lifecycle - Bundleless Mode](./build-lifecycle.md#bundleless-mode).
+
+#### `splitting`
+
+| Property | Value |
+| --- | --- |
+| Type | `boolean` |
+| Default | `true` for multi-entry, `false` for single-entry |
+| Required | No |
+
+Whether to enable code splitting for shared modules between entry points. When
+`true`, Bun extracts shared code between multiple entry points into separate
+chunk files (`chunk-[hash].js`), reducing duplication. When `false`, each entry
+point is fully self-contained.
+
+The default is auto-detected: `true` when there are multiple entry points,
+`false` for single-entry builds. Only applies in bundle mode (`bundle !== false`);
+bundleless mode always uses `splitting: false`.
+
+When splitting is enabled, `Bun.build()` uses object-form `naming`:
+
+```typescript
+naming: {
+  entry: "[dir]/[name].[ext]",
+  chunk: "chunk-[hash].[ext]",
+}
+```
+
+Chunk artifacts (`output.kind === "chunk"`) are skipped in the post-build
+rename loop since they have content-hash names and do not correspond to
+entry points.
+
+```typescript
+// Enable splitting for single-entry (normally auto-disabled)
+BunLibraryBuilder.create({ splitting: true })
+
+// Disable splitting for multi-entry (normally auto-enabled)
+BunLibraryBuilder.create({ splitting: false })
+```
 
 #### `bunTarget`
 
@@ -391,5 +430,5 @@ interface TransformFilesContext {
 ---
 
 **Document Status:** Current - Complete reference for BunLibraryBuilderOptions
-including bundle/bundleless mode, format, bunTarget, virtualEntries, publish
-targets, and transformation hooks.
+including bundle/bundleless mode, splitting (code splitting with auto defaults),
+format, bunTarget, virtualEntries, publish targets, and transformation hooks.

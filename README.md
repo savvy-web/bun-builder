@@ -55,6 +55,7 @@ The builder ships with sensible defaults -- most projects need no configuration:
 | Option | Default | Description |
 | --- | --- | --- |
 | `bundle` | `true` | Bundled output with rolled-up `.d.ts` via API Extractor |
+| `splitting` | `true` (multi-entry) / `false` (single-entry) | Code splitting for shared modules between entry points |
 | `apiModel` | `true` | API model generation for the npm target |
 | `tsdoc.warnings` | `"fail"` (CI) / `"log"` (local) | TSDoc warning severity |
 
