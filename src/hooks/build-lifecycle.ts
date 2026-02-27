@@ -719,7 +719,7 @@ export async function runTsDocLint(context: BuildContext, options: ResolvedLintO
  * Executes Bun.build() with the following configuration:
  * - Target: Node.js
  * - Format: ESM
- * - Splitting: Disabled (single-file outputs)
+ * - Splitting: Auto (enabled for multi-entry, disabled for single-entry)
  * - Source maps: Linked for dev, none for npm
  * - Minification: Disabled
  *
