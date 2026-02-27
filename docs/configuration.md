@@ -175,6 +175,33 @@ export default BunLibraryBuilder.create({
 });
 ```
 
+### `splitting`
+
+Whether to enable code splitting for shared modules between entry points.
+
+| Property | Type | Default |
+| --- | --- | --- |
+| `splitting` | `boolean` | `true` for multi-entry, `false` for single-entry |
+
+When `true`, Bun extracts shared code between multiple entry points into
+separate chunk files, reducing duplication. When `false`, each entry point
+is fully self-contained.
+
+Defaults to `true` when there are multiple entry points, `false` for
+single-entry builds.
+
+```typescript
+// Explicit code splitting (useful for multi-entry builds)
+export default BunLibraryBuilder.create({
+  splitting: true,
+});
+
+// Disable code splitting (each entry is self-contained)
+export default BunLibraryBuilder.create({
+  splitting: false,
+});
+```
+
 ---
 
 ## Bundling Configuration
@@ -600,6 +627,9 @@ const options: BunLibraryBuilderOptions = {
 
   // Build mode (true = bundled, false = bundleless)
   bundle: true, // default from DEFAULT_OPTIONS
+
+  // Code splitting (true for multi-entry, false for single-entry)
+  // splitting: true,
 
   // Build targets
   targets: ['dev', 'npm'],

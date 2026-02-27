@@ -3,8 +3,8 @@ status: current
 module: bun-builder
 category: reference
 created: 2026-02-26
-updated: 2026-02-26
-last-synced: 2026-02-26
+updated: 2026-02-27
+last-synced: 2026-02-27
 completeness: 95
 related:
   - bun-builder/architecture.md
@@ -487,14 +487,40 @@ reference scoping.
 | `tsdoc.json` | Yes (skipCIValidation=true) | No (negated pattern) |
 | `tsconfig.json` | Yes (if apiModel) | No (negated pattern) |
 
+### TSDoc Config In-Memory Loading
+
+During the DTS rollup phase, the TSDoc config is built in-memory using
+`TsDocConfigBuilder.buildConfigObject()` + `TSDocConfigFile.loadFromObject()`
+rather than writing `tsdoc.json` to disk before API Extractor runs. Tag
+definitions come from `context.options.apiModel.tsdoc` (the builder's options),
+NOT the `apiModel` parameter passed to `runApiExtractor()`. This ensures tags
+work in both dev and npm modes, since the parameter only controls whether to
+generate `.api.json` output while tag definitions are needed regardless for
+DTS rollup.
+
+If no builder tsdoc config is provided, the implementation falls back to
+`TSDocConfigFile.loadForFolder(cwd)` to load the project's existing
+`tsdoc.json` (if present and valid).
+
 ### Dist tsdoc.json Behavior
 
-The `tsdoc.json` written to the dist output directory uses
-`skipCIValidation = true` when calling `TsDocConfigBuilder.writeConfigFile()`.
-This is because the dist `tsdoc.json` is a generated build artifact that should
-always be written fresh, unlike the project-root `tsdoc.json` which is committed
-to version control and validated in CI to ensure it stays in sync with build
-options.
+The on-disk `tsdoc.json` in the dist output directory is only persisted after a
+successful build using `TsDocConfigBuilder.writeConfigFile()` with
+`skipCIValidation = true`. This is because the dist `tsdoc.json` is a generated
+build artifact that should always be written fresh, unlike the project-root
+`tsdoc.json` which is committed to version control and validated in CI to ensure
+it stays in sync with build options.
+
+### Project-Root tsdoc.json Persist Fix
+
+The persist-to-project-root step now checks `lintActuallyRan` (defined as
+`lintEnabled AND lintConfig !== undefined`) rather than just `lintEnabled`.
+Previously, `lintEnabled` was `true` even when `lintConfig` was `undefined`
+(because lint is considered enabled when `apiModel !== false` and
+`lintConfig !== false`), which caused the persist step to be incorrectly
+skipped when lint never actually executed. Now the persist step correctly
+runs when lint did not execute, ensuring the project-root `tsdoc.json` stays
+in sync with build options.
 
 ### CI Detection
 
@@ -544,5 +570,7 @@ defined.
 
 **Document Status:** Current - Comprehensive reference for ApiModelOptions
 including CI-aware defaults for forgottenExports and warnings, isCI() accepting
-"true" and "1", skipCIValidation for dist tsdoc.json, multi-entry merging, and
-source location info.
+"true" and "1", in-memory TSDoc config loading via `buildConfigObject()` +
+`TSDocConfigFile.loadFromObject()`, skipCIValidation for dist tsdoc.json,
+project-root tsdoc.json persist fix (`lintActuallyRan` check), multi-entry
+merging, and source location info.

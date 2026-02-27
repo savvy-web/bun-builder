@@ -13,7 +13,7 @@ How `@savvy-web/bun-builder` generates and bundles TypeScript declarations.
 - [Forgotten Exports](#forgotten-exports)
 - [dtsBundledPackages Option](#dtsbundledpackages-option)
 - [API Model Generation](#api-model-generation)
-- [Fallback Behavior](#fallback-behavior)
+- [Error Handling](#error-handling)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -59,8 +59,8 @@ This prevents test-only types from leaking into published packages.
 
 Import graph filtering is used in:
 
-- **Bundle mode** -- When API Extractor falls back to copying unbundled
-  declarations, only reachable files are copied
+- **Bundle mode** -- When API Extractor is unavailable and unbundled
+  declarations are copied instead, only reachable files are included
 - **Bundleless mode** -- Raw `.d.ts` files are filtered so only reachable
   source files produce declaration output
 
@@ -386,22 +386,37 @@ API model files are:
 
 ---
 
-## Fallback Behavior
+## Error Handling
 
-When API Extractor fails or is unavailable, the builder falls back to copying
-unbundled declarations.
+API Extractor failures are treated as build errors. When declaration bundling
+fails, the build aborts with an error message that includes details about what
+went wrong.
 
-### When Fallback Occurs
+### When Errors Occur
 
-- API Extractor package not installed
-- Declaration bundling fails (type errors, etc.)
-- Main entry point declaration not found
+- **API Extractor not installed** -- Falls back to copying unbundled declarations
+  (with a warning)
+- **No export entry points found** -- Falls back to copying unbundled declarations
+  (with a warning)
+- **Declaration bundling fails** (type errors, etc.) -- Build fails with an error
 
-### Fallback Output
+### Bundling Failure Output
 
-Instead of a single bundled file, individual `.d.ts` files are copied. Only
-files reachable from entry points via import graph analysis are included, and
-test files are automatically excluded (see
+When API Extractor encounters an error during declaration bundling, the build
+fails with a descriptive error:
+
+```text
+error   API Extractor failed for entry "index":
+  [index] (src/types/internal.ts:15:0) Some error message...
+```
+
+Fix the underlying issue (type errors, missing declarations, etc.) and rebuild.
+
+### Missing API Extractor
+
+If `@microsoft/api-extractor` is not installed, unbundled `.d.ts` files are
+copied instead. Only files reachable from entry points via import graph analysis
+are included, and test files are automatically excluded (see
 [Import Graph Filtering](#import-graph-filtering)).
 
 ```text
@@ -409,15 +424,6 @@ dist/npm/
 ├── index.d.ts
 ├── utils/helpers.d.ts
 └── types/config.d.ts
-```
-
-### Console Output
-
-When fallback occurs, you'll see a warning:
-
-```text
-warn    [npm] API Extractor failed, copying unbundled declarations
-info    [npm] Copied 5 unbundled declaration file(s)
 ```
 
 ---

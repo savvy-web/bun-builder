@@ -3,8 +3,8 @@ status: current
 module: bun-builder
 category: architecture
 created: 2026-02-26
-updated: 2026-02-26
-last-synced: 2026-02-26
+updated: 2026-02-27
+last-synced: 2026-02-27
 completeness: 95
 related:
   - bun-builder/architecture.md
@@ -81,12 +81,20 @@ executeBuild(options, mode)
 |    - format: esm (default) or cjs     |
 |    - target: bun (default), node, or  |
 |      browser via bunTarget option      |
+|    - splitting: user option or auto    |
+|      (true for multi-entry, false for  |
+|       single-entry)                    |
+|    - naming: object-form when splitting|
+|      { entry: "[dir]/[name].[ext]",   |
+|        chunk: "chunk-[hash].[ext]" }   |
 |    - Execute bundling                  |
 |    - Rename outputs to match entries   |
+|    - Skip chunk artifacts in rename    |
 |    IF bundle = false (bundleless):     |
 |    - ImportGraph.traceFromEntries()    |
 |    - Discover all reachable source     |
 |    - Bun.build() per discovered file   |
+|    - splitting: always false           |
 |    - Strip src/ prefix from outputs    |
 |    - Preserve source directory layout  |
 |    - Track outputs for files array     |
@@ -116,7 +124,11 @@ executeBuild(options, mode)
 +----------------------------------------+
 | 7. DECLARATION BUNDLING (multi-entry)  |
 |    - Validate API Extractor installed  |
-|    - Load TSDocConfigFile.loadForFolder|
+|    - Build TSDocConfigFile in-memory   |
+|      via buildConfigObject() +         |
+|      TSDocConfigFile.loadFromObject()  |
+|      (tags from context.options, NOT   |
+|       the apiModel parameter)          |
 |    - Loop over ALL export entries      |
 |    - Run API Extractor per entry       |
 |    - enumMemberOrder: "preserve"       |
@@ -125,6 +137,9 @@ executeBuild(options, mode)
 |    - Collect per-entry API models      |
 |    - Collect TSDoc warnings w/ source  |
 |    - Collect forgotten exports w/ src  |
+|    - Collect error diagnostics         |
+|    - THROW on per-entry failure        |
+|      (fail-fast with error details)    |
 |    - Merge models via mergeApiModels() |
 |    - Rewrite canonical refs for subs   |
 |    - Process TSDoc warnings (fail/log) |
@@ -132,7 +147,8 @@ executeBuild(options, mode)
 |    - tsdoc-metadata: main entry only   |
 |    - Generate tsconfig.json + tsdoc.json|
 |    - tsdoc.json: skipCIValidation=true |
-|    - Fallback: copy unbundled .d.ts    |
+|    - Outer catch re-throws (no silent  |
+|      fallback to unbundled .d.ts)      |
 +----------------------------------------+
          |
          v
@@ -269,11 +285,19 @@ The build mode is determined by `options.bundle` (default: `true`).
 
 1. Convert entry paths to absolute
 2. Build externals array from options
-3. Configure Bun.build() (see [Bun Build Integration](#bun-build-integration))
-4. Execute `Bun.build()`
-5. Post-process: rename outputs to match entry names
-6. Clean up empty directories after renaming
-7. Add outputs to files array (excluding .map)
+3. Resolve `splitting`: `options.splitting ?? (entryCount > 1)`
+   - Defaults to `true` for multi-entry, `false` for single-entry
+   - When splitting is enabled, uses object-form `naming`:
+     `{ entry: "[dir]/[name].[ext]", chunk: "chunk-[hash].[ext]" }`
+   - When splitting is disabled, uses string-form `naming`:
+     `"[dir]/[name].[ext]"`
+4. Configure Bun.build() (see [Bun Build Integration](#bun-build-integration))
+5. Execute `Bun.build()`
+6. Post-process: rename outputs to match entry names
+   - Chunk artifacts (`output.kind === "chunk"`) are skipped in the rename
+     loop since they have content-hash names
+7. Clean up empty directories after renaming
+8. Add outputs to files array (excluding .map)
 
 **Bundleless Mode (`bundle: false`):**
 
@@ -301,10 +325,11 @@ non-reachable source files are excluded from declaration output.
 **Usage:** The `tracedFiles` set is passed to:
 
 - `copyUnbundledDeclarations(context, tempDtsDir, tracedFiles)` - Only copies
-  `.d.ts` files in the allowlist
-- `runApiExtractor(context, tempDtsDir, apiModel, { tracedFiles })` - Propagated
-  to all fallback `copyUnbundledDeclarations` calls within API Extractor error
-  handling paths
+  `.d.ts` files in the allowlist (used in bundleless mode)
+- `runApiExtractor(context, tempDtsDir, apiModel, { tracedFiles })` - Used
+  when API Extractor is not installed to copy unbundled declarations as a
+  fallback; in normal operation, `runApiExtractor` throws on failure (fail-fast)
+  rather than silently falling back to unbundled declarations
 
 ### Phase 4: Declaration Generation
 
@@ -337,6 +362,25 @@ In bundleless mode (`options.bundleless: true`), DTS rollup is disabled
 (`dtsRollup: { enabled: false }`) and API Extractor runs only for `.api.json`
 generation when `apiModel` is enabled.
 
+**Error Handling -- Fail-Fast:**
+
+`runApiExtractor()` throws on per-entry failure with collected error
+diagnostics formatted with source location info. The outer catch in
+`runApiExtractor()` re-throws the error (no silent fallback to copying
+unbundled declarations). `executeBuild()` wraps the call in a try-catch and
+returns `{ success: false, errors: [new Error(errorMessage)] }` which
+`BunLibraryBuilder.run()` then logs.
+
+**TSDoc Config -- In-Memory Loading:**
+
+Instead of writing `tsdoc.json` to disk before API Extractor runs, the
+config is built in-memory using `TsDocConfigBuilder.buildConfigObject()` +
+`TSDocConfigFile.loadFromObject()`. Tag definitions come from
+`context.options.apiModel.tsdoc` (the builder's options), NOT the `apiModel`
+parameter passed to `runApiExtractor()`. The parameter controls whether to
+generate `.api.json` output; tag definitions are needed regardless for DTS
+rollup. The on-disk `tsdoc.json` is only persisted after a successful build.
+
 **Operations:**
 
 1. Validate API Extractor installed
@@ -344,8 +388,15 @@ generation when `apiModel` is enabled.
 3. Resolve API model configuration using `ApiModelConfigResolver`
 4. Resolve `forgottenExports` behavior (`"include"` local, `"error"` CI)
 5. Resolve `tsdoc.warnings` behavior (`"fail"` in CI, `"log"` locally, `"none"`)
-6. Load `TSDocConfigFile.loadForFolder(cwd)` from `@microsoft/tsdoc-config`
-   to respect `tsdoc.json` custom tag definitions
+6. Build `TSDocConfigFile` in-memory:
+   - If `context.options.apiModel.tsdoc` is configured:
+     `TsDocConfigBuilder.buildConfigObject(tsdocOptions)` produces the
+     complete tsdoc.json config, loaded via
+     `TSDocConfigFile.loadFromObject(configObject)`
+   - Otherwise: fall back to `TSDocConfigFile.loadForFolder(cwd)` to load
+     the project's existing `tsdoc.json` (if present and valid)
+   - This avoids writing `tsdoc.json` to disk before the build, ensuring
+     that tags work in both dev and npm modes
 7. For each export entry:
    a. Find declaration file via `resolveDtsPath()`
    b. Configure API Extractor with entry-specific paths:
@@ -358,7 +409,11 @@ generation when `apiModel` is enabled.
    e. Collect TSDoc warnings with source location info (`sourceFilePath`,
       `sourceFileLine`, `sourceFileColumn`)
    f. Collect forgotten export messages with source location info
-   g. Read per-entry API model for merging
+   g. Collect error/warning diagnostics into `collectedErrors`
+   h. Read per-entry API model for merging (done before success check since
+      docModel JSON is generated even when DTS rollup fails)
+   i. **Throw** on per-entry failure with formatted error details from
+      `collectedErrors`
 8. Process collected TSDoc warnings:
    - Separate first-party (project source) from third-party (node_modules)
    - Third-party warnings always logged (never fail the build)
@@ -372,11 +427,11 @@ generation when `apiModel` is enabled.
     - Sub-entries get rewritten references: `@scope/package/subpath!`
     - All member canonical references recursively rewritten
 11. Generate resolved tsconfig.json using `TsconfigResolver`
-12. Generate tsdoc.json in output directory with `skipCIValidation=true`
+12. Persist tsdoc.json to output directory with `skipCIValidation=true`
     (dist tsdoc.json is a generated build artifact, not a version-controlled
     config file, so CI validation is inappropriate)
-13. Handle failures by copying unbundled declarations (passing `tracedFiles`
-    to filter output); error logging includes stack traces
+13. Outer catch re-throws errors; `executeBuild()` catches and returns
+    `{ success: false, errors }`
 
 **Generated Files (when enabled):**
 
@@ -528,10 +583,11 @@ with `dtsRollup: { enabled: false }`.
 
 | Aspect | Bundle Mode | Bundleless Mode |
 | --- | --- | --- |
-| Output structure | Single file per entry | Preserves source tree |
+| Output structure | Single file per entry (+ chunks if splitting) | Preserves source tree |
+| Code splitting | `splitting` option (auto: multi=true, single=false) | Always `false` |
 | File discovery | Entry points only | ImportGraph traces all reachable |
 | Bun.build() | Standard bundling | Per-file compilation |
-| Declarations | API Extractor DTS rollup | Raw tsgo `.d.ts` files |
+| Declarations | API Extractor DTS rollup (fail-fast) | Raw tsgo `.d.ts` files |
 | API model | Per-entry + merge | Per-entry + merge (no DTS) |
 | Tree shaking | Yes | No |
 
@@ -544,23 +600,33 @@ with `dtsRollup: { enabled: false }`.
 **Bundle mode** (`bundle !== false`, default):
 
 ```typescript
+const hasMultipleEntries = Object.keys(context.entries).length > 1;
+const splitting = context.options.splitting ?? hasMultipleEntries;
+
 const result = await Bun.build({
   entrypoints: absoluteEntryPaths,
   outdir: context.outdir,
   target: context.options.bunTarget ?? "bun",
   format: context.options.format ?? "esm",
-  splitting: false,
+  splitting,
   sourcemap: mode === "dev" ? "linked" : "none",
   minify: false,
   external: externalPackages,
   packages: "external",
-  naming: "[dir]/[name].[ext]",
+  // When splitting is enabled, use object-form naming to control chunk filenames.
+  naming: splitting
+    ? { entry: "[dir]/[name].[ext]", chunk: "chunk-[hash].[ext]" }
+    : "[dir]/[name].[ext]",
   define: {
     "process.env.__PACKAGE_VERSION__": JSON.stringify(version),
     ...userDefine,
   },
   plugins: userPlugins,
 });
+
+// Post-process: rename outputs to match entry names.
+// Chunk artifacts (output.kind === "chunk") are skipped — they have
+// content-hash names and don't need renaming.
 ```
 
 **Bundleless mode** (`bundle: false`):
@@ -575,7 +641,7 @@ const result = await Bun.build({
   outdir: context.outdir,
   target: context.options.bunTarget ?? "bun",
   format: context.options.format ?? "esm",
-  splitting: false,
+  splitting: false,  // Always false in bundleless mode
   sourcemap: mode === "dev" ? "linked" : "none",
   minify: false,
   external: externalPackages,
@@ -606,9 +672,23 @@ API Extractor is invoked once per export entry point. Per-entry API models are
 then merged into a single Package with multiple EntryPoint members.
 
 ```typescript
-// Load tsdoc.json config for custom tag definitions
+// Build TSDocConfigFile in-memory from builder config (no disk write needed).
+// Tag definitions come from context.options.apiModel.tsdoc, NOT the apiModel
+// parameter — the parameter controls .api.json output; tags are always needed.
 const { TSDocConfigFile } = await import("@microsoft/tsdoc-config");
-const tsdocConfigFile = TSDocConfigFile.loadForFolder(context.cwd);
+const tsdocOptions = context.options.apiModel?.tsdoc;
+
+let tsdocConfigFile;
+if (tsdocOptions) {
+  const configObject = TsDocConfigBuilder.buildConfigObject(tsdocOptions);
+  tsdocConfigFile = TSDocConfigFile.loadFromObject(configObject);
+} else {
+  // Fall back to project's existing tsdoc.json
+  const loaded = TSDocConfigFile.loadForFolder(context.cwd);
+  if (!loaded.fileNotFound && !loaded.hasErrors) {
+    tsdocConfigFile = loaded;
+  }
+}
 
 // Per-entry invocation (runs in a loop over all export entries)
 const extractorConfig = ExtractorConfig.prepare({
@@ -638,9 +718,15 @@ Extractor.invoke(extractorConfig, {
   messageCallback: (message) => {
     // Collect TSDoc warnings with source location info
     // Collect ae-forgotten-export messages with source location info
+    // Collect error/warning diagnostics into collectedErrors
     // Suppress TypeScript version and signature change warnings
   },
 });
+
+// Fail-fast: throw on per-entry failure with collected error diagnostics
+if (!extractorResult.succeeded) {
+  throw new Error(`API Extractor failed for entry "${entryName}": ${errorDetails}`);
+}
 
 // After all entries processed:
 // 1. Process TSDoc warnings (first-party vs third-party, fail/log/none)
@@ -651,16 +737,31 @@ const merged = mergeApiModels({
   packageName: '@scope/package',
   exportPaths: context.exportPaths,
 });
+// 4. Persist tsdoc.json to dist (on-disk write only after success)
 ```
 
-### Dist tsdoc.json and skipCIValidation
+### tsdoc.json Persistence
 
-The `tsdoc.json` written to the dist output directory uses
-`skipCIValidation = true` when calling `TsDocConfigBuilder.writeConfigFile()`.
-This is because the dist `tsdoc.json` is a generated build artifact that should
-always be written fresh, unlike the project-root `tsdoc.json` which is committed
-to version control and validated in CI to ensure it stays in sync with build
-options.
+**In-memory loading for API Extractor:** During the DTS rollup phase, the
+TSDoc config is built in-memory via `TsDocConfigBuilder.buildConfigObject()`
+and loaded via `TSDocConfigFile.loadFromObject()`. No `tsdoc.json` is written
+to disk before the build runs. This ensures tag definitions work in both dev
+and npm modes since the config comes from `context.options.apiModel.tsdoc`
+rather than from a file that might not exist yet.
+
+**Dist output (`skipCIValidation = true`):** The `tsdoc.json` written to the
+dist output directory uses `skipCIValidation = true` when calling
+`TsDocConfigBuilder.writeConfigFile()`. This is because the dist `tsdoc.json`
+is a generated build artifact that should always be written fresh, unlike the
+project-root `tsdoc.json` which is committed to version control and validated
+in CI to ensure it stays in sync with build options.
+
+**Project-root persist fix:** The tsdoc.json persist-to-project-root step
+checks `lintActuallyRan` (which is `lintEnabled AND lintConfig !== undefined`)
+rather than just `lintEnabled`. Previously, `lintEnabled` was `true` even when
+`lintConfig` was `undefined` (because lint never actually ran), which
+incorrectly skipped the persist step. Now the persist step correctly runs when
+lint did not execute.
 
 ### CI Detection
 
@@ -730,6 +831,10 @@ option for dotfiles). Temporary files use `os.tmpdir()` +
 ---
 
 **Document Status:** Current - Extracted from architecture.md. Covers all 12
-build phases, bundleless mode, tool integrations, CI detection (`isCI()` checks
-`"true"` and `"1"`), `skipCIValidation` for dist tsdoc.json, forgotten exports
-handling, and ImportGraph-based DTS filtering.
+build phases, bundleless mode, code splitting (`splitting` option with auto
+defaults), fail-fast DTS rollup error handling, in-memory TSDoc config loading
+via `buildConfigObject()` + `TSDocConfigFile.loadFromObject()`, tool
+integrations, CI detection (`isCI()` checks `"true"` and `"1"`),
+`skipCIValidation` for dist tsdoc.json, forgotten exports handling,
+ImportGraph-based DTS filtering, and `tsdoc.json` persist fix
+(`lintActuallyRan` check).

@@ -957,6 +957,21 @@ export interface BunLibraryBuilderOptions {
 	bundle?: boolean;
 
 	/**
+	 * Whether to enable code splitting for shared modules between entrypoints.
+	 *
+	 * @remarks
+	 * When `true`, Bun extracts shared code between multiple entrypoints into
+	 * separate chunk files, reducing duplication. When `false`, each entrypoint
+	 * is fully self-contained.
+	 *
+	 * Defaults to `true` when there are multiple entrypoints, `false` for
+	 * single-entrypoint builds.
+	 *
+	 * @defaultValue `true` for multi-entry, `false` for single-entry
+	 */
+	splitting?: boolean;
+
+	/**
 	 * Output module format.
 	 *
 	 * @remarks
