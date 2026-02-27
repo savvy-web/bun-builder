@@ -2193,14 +2193,13 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 					filesArray.add("!tsdoc.json");
 				}
 			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : String(error);
 				return {
 					success: false,
 					mode,
 					outdir,
 					outputs: [],
 					duration: timer.elapsed(),
-					errors: [new Error(errorMessage)],
+					errors: [error instanceof Error ? error : new Error(String(error))],
 				};
 			}
 		}
@@ -2235,14 +2234,13 @@ export async function executeBuild(options: BunLibraryBuilderOptions, mode: Buil
 				filesArray.add("!tsdoc.json");
 			}
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : String(error);
 			return {
 				success: false,
 				mode,
 				outdir,
 				outputs: [],
 				duration: timer.elapsed(),
-				errors: [new Error(errorMessage)],
+				errors: [error instanceof Error ? error : new Error(String(error))],
 			};
 		}
 	}

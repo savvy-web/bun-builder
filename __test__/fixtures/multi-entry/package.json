@@ -1,0 +1,9 @@
+{
+	"name": "@test/multi-entry",
+	"version": "1.0.0",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./utils": "./src/utils.ts"
+	}
+}
