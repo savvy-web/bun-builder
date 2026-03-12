@@ -512,6 +512,30 @@ export interface TsDocOptions {
 }
 
 /**
+ * A rule for suppressing specific API Extractor warning messages.
+ *
+ * @remarks
+ * Rules use AND logic: when both `messageId` and `pattern` are specified,
+ * both must match for the message to be suppressed. When only one field
+ * is specified, only that field is checked.
+ *
+ * @public
+ */
+export interface WarningSuppressionRule {
+	/**
+	 * Exact match against the message's `messageId` property
+	 * (e.g., `"ae-forgotten-export"`, `"tsdoc-param-tag-missing-hyphen"`).
+	 */
+	messageId?: string;
+
+	/**
+	 * Pattern matched against the message's `text` property.
+	 * Tried as a RegExp first; falls back to case-sensitive substring match.
+	 */
+	pattern?: string;
+}
+
+/**
  * Options for API model generation.
  *
  * @remarks
@@ -606,6 +630,25 @@ export interface ApiModelOptions {
 	 * @defaultValue `"error"` in CI, `"include"` locally
 	 */
 	forgottenExports?: "include" | "error" | "ignore";
+
+	/**
+	 * Declarative rules to suppress specific API Extractor warnings.
+	 *
+	 * @remarks
+	 * Each rule can match by `messageId`, `pattern` (text), or both (AND logic).
+	 * Matched messages are silenced and logged at info level instead.
+	 * Only warning-level messages are eligible for suppression; error-level
+	 * messages are never suppressed to prevent masking real build failures.
+	 *
+	 * @example
+	 * ```ts
+	 * suppressWarnings: [
+	 *   { messageId: "ae-forgotten-export", pattern: "_internal" },
+	 *   { pattern: "^Analysis will use" },
+	 * ]
+	 * ```
+	 */
+	suppressWarnings?: WarningSuppressionRule[];
 }
 
 /**

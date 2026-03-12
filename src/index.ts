@@ -94,6 +94,7 @@ export type {
 	TsDocTagDefinition,
 	TsDocTagGroup,
 	VirtualEntryConfig,
+	WarningSuppressionRule,
 } from "./builders/bun-library-builder.js";
 
 // =============================================================================

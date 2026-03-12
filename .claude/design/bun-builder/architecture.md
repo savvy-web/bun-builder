@@ -3,8 +3,8 @@ status: current
 module: bun-builder
 category: architecture
 created: 2026-01-26
-updated: 2026-02-27
-last-synced: 2026-02-27
+updated: 2026-03-12
+last-synced: 2026-03-12
 completeness: 95
 related:
   - bun-builder/build-lifecycle.md
@@ -677,6 +677,28 @@ console.log(result.errors);   // Any errors encountered
 const result2 = ImportGraph.fromEntries(['./src/index.ts'], { rootDir: process.cwd() });
 ```
 
+#### Component 16: MessageSuppressor
+
+**Location:** `src/plugins/utils/message-suppressor.ts`
+
+**Purpose:** Provides granular suppression of API Extractor warning messages
+based on declarative rules. Rules can match by `messageId`, text `pattern`
+(RegExp or substring), or both (AND logic). Regex patterns are compiled once
+at factory time for efficiency.
+
+**Public API (internal to the package):**
+
+| Export | Purpose |
+| --- | --- |
+| `matchesSuppression(rule, messageId, text)` | Test a single rule against a message |
+| `createMessageSuppressor(rules)` | Factory; pre-compiles regex patterns once |
+| `MessageSuppressor` (interface) | Object with `matches(messageId, text)` method |
+
+**Used by:** `build-lifecycle.ts` -- the suppressor is created once before the
+entry loop from `apiModel.suppressWarnings` and checked first in every
+`messageCallback` invocation. Suppressed messages are logged at info level
+after `Extractor.invoke()` returns.
+
 ### Architecture Diagram
 
 ```text
@@ -730,6 +752,7 @@ const result2 = ImportGraph.fromEntries(['./src/index.ts'], { rootDir: process.c
 |    - TsconfigResolver: Resolve tsconfig for virtual envs    |
 |    - TsDocConfigBuilder: Generate/validate tsdoc.json       |
 |    - ImportGraph: Trace imports for lint + bundleless + DTS |
+|    - MessageSuppressor: Suppress API Extractor warnings     |
 |    - TSConfigs: Manage tsconfig for declaration gen         |
 |    - mergeApiModels(): Merge per-entry API model JSON       |
 +-------------------------------------------------------------+

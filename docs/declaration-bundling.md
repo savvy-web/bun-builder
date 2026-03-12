@@ -288,6 +288,34 @@ export default BunLibraryBuilder.create({
 
 ---
 
+## Warning Suppression Rules
+
+For fine-grained control beyond the global warning levels, use
+`apiModel.suppressWarnings` to silence specific messages by ID and/or text
+pattern. Suppressed messages are logged at info level for visibility.
+
+```typescript
+export default BunLibraryBuilder.create({
+  apiModel: {
+    suppressWarnings: [
+      // Suppress a specific forgotten export by symbol name
+      { messageId: 'ae-forgotten-export', pattern: '_InternalHelper' },
+      // Suppress by regex pattern
+      { pattern: '^Analysis will use' },
+    ],
+  },
+});
+```
+
+Rules use AND logic: when both `messageId` and `pattern` are specified, both
+must match. Patterns are tried as RegExp first; invalid regex falls back to
+case-sensitive substring matching.
+
+See [Configuration Reference](./configuration.md#warning-suppression-rules) for
+the full `WarningSuppressionRule` API.
+
+---
+
 ## dtsBundledPackages Option
 
 Control which dependency types are inlined vs. referenced.

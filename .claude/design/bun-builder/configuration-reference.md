@@ -3,8 +3,8 @@ status: current
 module: bun-builder
 category: reference
 created: 2026-02-26
-updated: 2026-02-27
-last-synced: 2026-02-27
+updated: 2026-03-12
+last-synced: 2026-03-12
 completeness: 95
 related:
   - bun-builder/architecture.md
@@ -270,7 +270,8 @@ with `outputs`, `filesArray`, `mode`, and `target`.
 | Default | `true` |
 | Required | No |
 
-API model and TSDoc lint configuration. See
+API model and TSDoc lint configuration. Includes `suppressWarnings` for
+granular warning suppression via `WarningSuppressionRule[]`. See
 [API Model Options](./api-model-options.md) for detailed reference.
 
 #### `virtualEntries`
@@ -431,4 +432,5 @@ interface TransformFilesContext {
 
 **Document Status:** Current - Complete reference for BunLibraryBuilderOptions
 including bundle/bundleless mode, splitting (code splitting with auto defaults),
-format, bunTarget, virtualEntries, publish targets, and transformation hooks.
+format, bunTarget, virtualEntries, publish targets, transformation hooks, and
+`suppressWarnings` for granular API Extractor warning suppression.

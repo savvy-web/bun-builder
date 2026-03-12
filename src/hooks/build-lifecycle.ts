@@ -29,6 +29,7 @@ import { FileSystemUtils, LocalPathValidator } from "../plugins/utils/file-utils
 import type { ImportGraphError } from "../plugins/utils/import-graph.js";
 import { ImportGraph } from "../plugins/utils/import-graph.js";
 import { BuildLogger } from "../plugins/utils/logger.js";
+import { createMessageSuppressor } from "../plugins/utils/message-suppressor.js";
 import { PackageJsonTransformer } from "../plugins/utils/package-json-transformer.js";
 import { TsDocConfigBuilder } from "../plugins/utils/tsdoc-config-builder.js";
 import type {
@@ -1393,6 +1394,10 @@ export async function runApiExtractor(
 		(typeof apiModel === "object" && apiModel !== null ? apiModel.forgottenExports : undefined) ??
 		(BuildLogger.isCI() ? "error" : "include");
 
+	// Create message suppressor from user-defined rules (compiled once, reused per entry)
+	const suppressionRules = typeof apiModel === "object" && apiModel !== null ? apiModel.suppressWarnings : undefined;
+	const suppressor = suppressionRules?.length ? createMessageSuppressor(suppressionRules) : undefined;
+
 	// Ensure output directory exists
 	await mkdir(context.outdir, { recursive: true });
 
@@ -1511,10 +1516,18 @@ export async function runApiExtractor(
 				tsdocConfigFile,
 			});
 
+			const suppressedMessages: string[] = [];
 			const extractorResult = Extractor.invoke(extractorConfig, {
 				localBuild: true,
 				showVerboseMessages: false,
 				messageCallback: (message) => {
+					// User-defined suppression rules (checked first, warnings only)
+					if (suppressor?.matches(message.messageId, message.text) && message.logLevel !== ExtractorLogLevel.Error) {
+						suppressedMessages.push(`[${message.messageId}] ${message.text ?? "(no text)"}`);
+						message.logLevel = ExtractorLogLevel.None;
+						return;
+					}
+
 					// Suppress TypeScript version mismatch warnings
 					if (
 						message.text?.includes("Analysis will use the bundled TypeScript version") ||
@@ -1569,6 +1582,14 @@ export async function runApiExtractor(
 					}
 				},
 			});
+
+			// Log suppressed messages at info level
+			if (suppressedMessages.length > 0) {
+				logger.info(`Suppressed ${suppressedMessages.length} warning(s) for "${entryName}":`);
+				for (const msg of suppressedMessages) {
+					logger.info(`  ${msg}`);
+				}
+			}
 
 			// Read per-entry API model for merging — do this before the success check
 			// because the docModel JSON is still generated even when DTS rollup fails

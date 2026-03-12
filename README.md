@@ -96,6 +96,19 @@ export default BunLibraryBuilder.create({
 - **`"log"`** -- Log warnings but continue (default locally)
 - **`"none"`** -- Suppress warnings entirely
 
+For fine-grained control, use `suppressWarnings` to silence specific messages:
+
+```typescript
+export default BunLibraryBuilder.create({
+  apiModel: {
+    suppressWarnings: [
+      { messageId: 'ae-forgotten-export', pattern: '_InternalHelper' },
+      { pattern: '^Analysis will use' },
+    ],
+  },
+});
+```
+
 ## TypeScript Configuration
 
 The package includes a base tsconfig optimized for ESM library builds:
