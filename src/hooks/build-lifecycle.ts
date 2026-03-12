@@ -1521,8 +1521,8 @@ export async function runApiExtractor(
 				localBuild: true,
 				showVerboseMessages: false,
 				messageCallback: (message) => {
-					// User-defined suppression rules (checked first)
-					if (suppressor?.matches(message.messageId, message.text)) {
+					// User-defined suppression rules (checked first, warnings only)
+					if (suppressor?.matches(message.messageId, message.text) && message.logLevel !== ExtractorLogLevel.Error) {
 						suppressedMessages.push(`[${message.messageId}] ${message.text ?? "(no text)"}`);
 						message.logLevel = ExtractorLogLevel.None;
 						return;
