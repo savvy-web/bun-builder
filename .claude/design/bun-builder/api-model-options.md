@@ -60,6 +60,12 @@ interface ApiModelOptions {
   tsdoc?: TsDocOptions;
   tsdocMetadata?: TsDocMetadataOptions | boolean;
   forgottenExports?: "include" | "error" | "ignore";
+  suppressWarnings?: WarningSuppressionRule[];
+}
+
+interface WarningSuppressionRule {
+  messageId?: string;
+  pattern?: string;
 }
 
 interface TsDocOptions {
@@ -269,6 +275,66 @@ apiModel: { enabled: true, forgottenExports: "ignore" }
 apiModel: { enabled: true }
 ```
 
+#### `suppressWarnings`
+
+| Property | Value |
+| --- | --- |
+| Type | `WarningSuppressionRule[]` |
+| Default | `undefined` |
+| Required | No |
+
+Declarative rules for suppressing specific API Extractor warning messages.
+Each rule can match by `messageId`, text `pattern`, or both (AND logic when
+both are specified). Matched messages are silenced in the `messageCallback`
+and logged at info level after `Extractor.invoke()` returns.
+
+**WarningSuppressionRule fields:**
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `messageId` | `string` | Exact match on the message's `messageId` (e.g., `"ae-forgotten-export"`, `"tsdoc-param-tag-missing-hyphen"`) |
+| `pattern` | `string` | Tried as a RegExp first; falls back to substring match on message text |
+
+When both `messageId` and `pattern` are specified, both must match (AND logic).
+When only one field is specified, only that field is checked.
+
+**Implementation:** The suppressor is created once before the entry loop using
+`createMessageSuppressor()` from `src/plugins/utils/message-suppressor.ts`.
+RegExp patterns are compiled at factory time, not per-message. In the
+`messageCallback`, user-defined suppression is checked FIRST, before the
+built-in handlers for TS version mismatch, API signature changes, TSDoc
+warnings, and forgotten exports.
+
+```typescript
+// Suppress a specific message ID
+apiModel: {
+  suppressWarnings: [
+    { messageId: "ae-forgotten-export" },
+  ],
+}
+
+// Suppress messages matching a regex pattern
+apiModel: {
+  suppressWarnings: [
+    { pattern: "^Analysis will use" },
+  ],
+}
+
+// AND logic: suppress only forgotten exports mentioning "_internal"
+apiModel: {
+  suppressWarnings: [
+    { messageId: "ae-forgotten-export", pattern: "_internal" },
+  ],
+}
+
+// Substring fallback (invalid regex falls back to .includes())
+apiModel: {
+  suppressWarnings: [
+    { pattern: "some literal text" },
+  ],
+}
+```
+
 ### TsDocOptions
 
 TSDoc configuration is shared between API model generation and lint validation.
@@ -416,6 +482,9 @@ export default BunLibraryBuilder.create({
     filename: "bun-builder.api.json",
     localPaths: ["../docs-site/lib/packages/bun-builder"],
     forgottenExports: "error",
+    suppressWarnings: [
+      { pattern: "^Analysis will use" },
+    ],
     tsdoc: {
       groups: ["core", "extended", "discretionary"],
       tagDefinitions: [
@@ -557,6 +626,7 @@ defined.
 
 - `src/hooks/build-lifecycle.ts` - ApiModelConfigResolver, declaration bundling
 - `src/plugins/utils/tsdoc-config-builder.ts` - TsDocConfigBuilder
+- `src/plugins/utils/message-suppressor.ts` - MessageSuppressor factory
 
 **External Resources:**
 

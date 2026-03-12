@@ -460,6 +460,7 @@ export default BunLibraryBuilder.create({
 | `tsdoc` | `TsDocOptions` | - | TSDoc configuration (shared with lint) |
 | `tsdocMetadata` | `TsDocMetadataOptions \| boolean` | - | tsdoc-metadata.json options |
 | `forgottenExports` | `'include' \| 'error' \| 'ignore'` | `'error'` in CI, `'include'` locally | How to handle forgotten export warnings |
+| `suppressWarnings` | `WarningSuppressionRule[]` | - | Rules to suppress specific API Extractor warnings |
 
 #### TsDocOptions (with nested lint)
 
@@ -536,6 +537,37 @@ location info. The `forgottenExports` option controls this:
 - `"error"` (default in CI) -- Throw an error and abort the build
 - `"include"` (default locally) -- Log warnings with source locations
 - `"ignore"` -- Suppress silently
+
+#### Warning Suppression Rules
+
+For fine-grained control over individual API Extractor messages, use
+`suppressWarnings` to declare rules that silence specific warnings. Suppressed
+messages are logged at info level instead of warning level.
+
+Each `WarningSuppressionRule` has two optional fields:
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `messageId` | `string` | Exact match on message ID (e.g., `"ae-forgotten-export"`) |
+| `pattern` | `string` | Matched against message text; tried as RegExp first, falls back to substring |
+
+When both fields are specified, both must match (AND logic). Rules are compiled
+once before the entry loop and reused across all entry points.
+
+```typescript
+export default BunLibraryBuilder.create({
+  apiModel: {
+    suppressWarnings: [
+      // Suppress a specific forgotten export by name
+      { messageId: 'ae-forgotten-export', pattern: '_InternalHelper' },
+      // Suppress all messages matching a regex
+      { pattern: '^Analysis will use' },
+      // Suppress all instances of a specific message ID
+      { messageId: 'ae-unresolved-link' },
+    ],
+  },
+});
+```
 
 ---
 

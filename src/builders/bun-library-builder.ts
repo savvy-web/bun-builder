@@ -377,4 +377,5 @@ export type {
 	TsDocTagDefinition,
 	TsDocTagGroup,
 	VirtualEntryConfig,
+	WarningSuppressionRule,
 } from "../types/builder-types.js";
