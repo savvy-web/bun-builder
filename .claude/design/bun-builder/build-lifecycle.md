@@ -3,8 +3,8 @@ status: current
 module: bun-builder
 category: architecture
 created: 2026-02-26
-updated: 2026-02-27
-last-synced: 2026-02-27
+updated: 2026-03-12
+last-synced: 2026-03-12
 completeness: 95
 related:
   - bun-builder/architecture.md
@@ -135,6 +135,7 @@ executeBuild(options, mode)
 |    - Bundle per-entry .d.ts files      |
 |      (or skip DTS rollup if bundleless)|
 |    - Collect per-entry API models      |
+|    - Suppress user-defined warnings    |
 |    - Collect TSDoc warnings w/ source  |
 |    - Collect forgotten exports w/ src  |
 |    - Collect error diagnostics         |
@@ -387,8 +388,11 @@ rollup. The on-disk `tsdoc.json` is only persisted after a successful build.
 2. Filter to export entries only (skip `bin/` entries)
 3. Resolve API model configuration using `ApiModelConfigResolver`
 4. Resolve `forgottenExports` behavior (`"include"` local, `"error"` CI)
-5. Resolve `tsdoc.warnings` behavior (`"fail"` in CI, `"log"` locally, `"none"`)
-6. Build `TSDocConfigFile` in-memory:
+5. Create `MessageSuppressor` from `apiModel.suppressWarnings` rules (compiled
+   once before the entry loop; `createMessageSuppressor()` pre-compiles regex
+   patterns at factory time)
+6. Resolve `tsdoc.warnings` behavior (`"fail"` in CI, `"log"` locally, `"none"`)
+7. Build `TSDocConfigFile` in-memory:
    - If `context.options.apiModel.tsdoc` is configured:
      `TsDocConfigBuilder.buildConfigObject(tsdocOptions)` produces the
      complete tsdoc.json config, loaded via
@@ -397,7 +401,7 @@ rollup. The on-disk `tsdoc.json` is only persisted after a successful build.
      the project's existing `tsdoc.json` (if present and valid)
    - This avoids writing `tsdoc.json` to disk before the build, ensuring
      that tags work in both dev and npm modes
-7. For each export entry:
+8. For each export entry:
    a. Find declaration file via `resolveDtsPath()`
    b. Configure API Extractor with entry-specific paths:
       - `enumMemberOrder: "preserve"`
@@ -414,23 +418,23 @@ rollup. The on-disk `tsdoc.json` is only persisted after a successful build.
       docModel JSON is generated even when DTS rollup fails)
    i. **Throw** on per-entry failure with formatted error details from
       `collectedErrors`
-8. Process collected TSDoc warnings:
+9. Process collected TSDoc warnings:
    - Separate first-party (project source) from third-party (node_modules)
    - Third-party warnings always logged (never fail the build)
    - First-party warnings respect `tsdoc.warnings` option:
      - `"fail"`: throw error (default in CI)
      - `"log"`: log as warnings (default locally)
      - `"none"`: suppress entirely
-9. Process collected forgotten exports (error/include/ignore)
-10. Merge per-entry API models via `mergeApiModels()`:
+10. Process collected forgotten exports (error/include/ignore)
+11. Merge per-entry API models via `mergeApiModels()`:
     - Main entry (`"."`) keeps canonical reference as `@scope/package!`
     - Sub-entries get rewritten references: `@scope/package/subpath!`
     - All member canonical references recursively rewritten
-11. Generate resolved tsconfig.json using `TsconfigResolver`
-12. Persist tsdoc.json to output directory with `skipCIValidation=true`
+12. Generate resolved tsconfig.json using `TsconfigResolver`
+13. Persist tsdoc.json to output directory with `skipCIValidation=true`
     (dist tsdoc.json is a generated build artifact, not a version-controlled
     config file, so CI validation is inappropriate)
-13. Outer catch re-throws errors; `executeBuild()` catches and returns
+14. Outer catch re-throws errors; `executeBuild()` catches and returns
     `{ success: false, errors }`
 
 **Generated Files (when enabled):**
@@ -716,10 +720,13 @@ const extractorConfig = ExtractorConfig.prepare({
 Extractor.invoke(extractorConfig, {
   localBuild: true,
   messageCallback: (message) => {
-    // Collect TSDoc warnings with source location info
-    // Collect ae-forgotten-export messages with source location info
-    // Collect error/warning diagnostics into collectedErrors
-    // Suppress TypeScript version and signature change warnings
+    // 1. User-defined suppression (checked FIRST)
+    //    suppressor?.matches(message.messageId, message.text)
+    //    → set logLevel=None, collect for info-level summary
+    // 2. Suppress TypeScript version and signature change warnings
+    // 3. Collect TSDoc warnings with source location info
+    // 4. Collect ae-forgotten-export messages with source location info
+    // 5. Collect error/warning diagnostics into collectedErrors
   },
 });
 
@@ -836,5 +843,6 @@ defaults), fail-fast DTS rollup error handling, in-memory TSDoc config loading
 via `buildConfigObject()` + `TSDocConfigFile.loadFromObject()`, tool
 integrations, CI detection (`isCI()` checks `"true"` and `"1"`),
 `skipCIValidation` for dist tsdoc.json, forgotten exports handling,
-ImportGraph-based DTS filtering, and `tsdoc.json` persist fix
-(`lintActuallyRan` check).
+ImportGraph-based DTS filtering, `tsdoc.json` persist fix
+(`lintActuallyRan` check), and user-defined warning suppression via
+`suppressWarnings` (MessageSuppressor checked first in messageCallback).

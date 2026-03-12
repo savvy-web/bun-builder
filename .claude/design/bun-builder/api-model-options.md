@@ -3,8 +3,8 @@ status: current
 module: bun-builder
 category: reference
 created: 2026-02-26
-updated: 2026-02-27
-last-synced: 2026-02-27
+updated: 2026-03-12
+last-synced: 2026-03-12
 completeness: 95
 related:
   - bun-builder/architecture.md
@@ -643,4 +643,5 @@ including CI-aware defaults for forgottenExports and warnings, isCI() accepting
 "true" and "1", in-memory TSDoc config loading via `buildConfigObject()` +
 `TSDocConfigFile.loadFromObject()`, skipCIValidation for dist tsdoc.json,
 project-root tsdoc.json persist fix (`lintActuallyRan` check), multi-entry
-merging, and source location info.
+merging, source location info, and `suppressWarnings` with
+`WarningSuppressionRule` (messageId/pattern AND logic, regex pre-compilation).

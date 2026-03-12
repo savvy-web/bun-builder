@@ -3,8 +3,8 @@ status: current
 module: bun-builder
 category: testing
 created: 2026-02-26
-updated: 2026-02-26
-last-synced: 2026-02-26
+updated: 2026-03-12
+last-synced: 2026-03-12
 completeness: 95
 related:
   - bun-builder/architecture.md
@@ -71,6 +71,8 @@ src/
 │   ├── logger.test.ts
 │   ├── tsdoc-config-builder.ts
 │   ├── tsdoc-config-builder.test.ts
+│   ├── message-suppressor.ts
+│   ├── message-suppressor.test.ts
 │   └── ...
 ```
 
@@ -297,4 +299,5 @@ bun run test:ai
 **Document Status:** Current - Covers test organization (unit + E2E), fixture
 structure (single-entry, bundleless-entry, multi-target), buildFixture() and
 cleanStaleTempDirs() utilities, coverage configuration in bunfig.toml with path
-ignore patterns, v8 ignore markers as future-proofing, and clean:e2e script.
+ignore patterns, v8 ignore markers as future-proofing, clean:e2e script, and
+message-suppressor.test.ts (21 tests, 100% coverage).
