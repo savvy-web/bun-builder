@@ -46,3 +46,4 @@ test.ts
 .playwright-mcp
 website/lib/packages/*/*.api.json
 website/lib/packages/*/package.json
+.mcp.json
