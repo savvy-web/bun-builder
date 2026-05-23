@@ -53,7 +53,7 @@
 
   * BuildMode type ("dev" or "npm")
   * PublishProtocol type ("npm" or "jsr")
-  * PublishTarget interface aligned with workflow-release-action ResolvedTarget
+  * PublishTarget interface aligned with silk-release-action ResolvedTarget
 
   ### New features
 

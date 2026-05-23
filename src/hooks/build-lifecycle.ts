@@ -299,7 +299,7 @@ export class ApiModelConfigResolver {
  * Known shorthand expansions for publish target strings.
  *
  * @remarks
- * Aligns with the `KNOWN_SHORTHANDS` in workflow-release-action's
+ * Aligns with the `KNOWN_SHORTHANDS` in silk-release-action's
  * `resolve-targets.ts`. The builder only needs build-relevant fields;
  * authentication details (tokenEnv) are handled by the release action.
  *
@@ -320,7 +320,7 @@ const KNOWN_TARGET_SHORTHANDS: Record<
  * @remarks
  * Expands shorthand strings (`"npm"`, `"github"`, `"jsr"`, or a URL) into
  * fully resolved `PublishTarget` objects. This mirrors the resolution logic
- * in `workflow-release-action/src/utils/resolve-targets.ts`, but only
+ * in `silk-release-action/src/utils/resolve-targets.ts`, but only
  * produces the subset of fields relevant to the build process.
  *
  * @param packageJson - The parsed package.json

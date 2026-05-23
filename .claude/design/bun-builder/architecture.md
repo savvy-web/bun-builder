@@ -806,7 +806,7 @@ interface PublishTarget {
 }
 ```
 
-This type aligns with the `ResolvedTarget` type from `workflow-release-action`,
+This type aligns with the `ResolvedTarget` type from `silk-release-action`,
 minus authentication-specific fields.
 
 **`resolvePublishTargets()` function** (in `build-lifecycle.ts`):
