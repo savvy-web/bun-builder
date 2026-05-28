@@ -114,7 +114,7 @@ export type PublishProtocol = "npm" | "jsr";
  * passes it to the `transform` and `transformFiles` callbacks once per target.
  *
  * This type aligns with the `ResolvedTarget` type from the
- * `workflow-release-action`, minus authentication-specific fields.
+ * `silk-release-action`, minus authentication-specific fields.
  *
  * @example
  * ```typescript
