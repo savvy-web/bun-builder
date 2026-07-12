@@ -24,12 +24,6 @@ required.
 bun add -D @savvy-web/bun-builder
 ```
 
-### Peer Dependencies
-
-```bash
-bun add -D @microsoft/api-extractor @typescript/native-preview typescript @types/bun
-```
-
 ## Quick Start
 
 Create a `bun.config.ts` file in your project root:
@@ -115,7 +109,7 @@ The package includes a base tsconfig optimized for ESM library builds:
 
 ```json
 {
-  "$schema": "https://json.schemastore.org/tsconfig",
+  "$schema": "https://json.schemastore.org/tsconfig.json",
   "extends": "@savvy-web/bun-builder/tsconfig/ecma/lib.json"
 }
 ```

@@ -6,7 +6,6 @@ export default BunLibraryBuilder.create({
 	externals: [
 		// Build tools that consumers must install
 		"@microsoft/api-extractor",
-		"@typescript/native-preview",
 		"typescript",
 	],
 	transform({ pkg }) {
