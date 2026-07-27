@@ -30,7 +30,5 @@ jobs:
       checks: write
     with:
       dry-run: ${{ inputs.dry_run || false }}
-      app-bot-id: ${{ vars.APP_BOT_ID }}
-      app-bot-name: ${{ vars.APP_BOT_NAME }}
       skip-claude-review: false
     secrets: inherit
