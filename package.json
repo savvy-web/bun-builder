@@ -111,22 +111,14 @@
 	"publishConfig": {
 		"access": "public",
 		"directory": "dist/dev",
-		"targets": [
-			{
-				"protocol": "npm",
-				"registry": "https://npm.pkg.github.com/",
-				"directory": "dist/npm",
-				"access": "public",
-				"provenance": true
+		"targets": {
+			"npm": {
+				"directory": "dist/npm"
 			},
-			{
-				"protocol": "npm",
-				"registry": "https://registry.npmjs.org/",
-				"directory": "dist/npm",
-				"access": "public",
-				"provenance": true
+			"github": {
+				"directory": "dist/npm"
 			}
-		]
+		}
 	},
 	"catalogs": {
 		"build": {
