@@ -100,7 +100,6 @@ export interface ResolvedApiModelConfig {
  *
  * @internal
  */
-// biome-ignore lint/complexity/noStaticOnlyClass: Intentional static-only class for API organization
 export class ApiModelConfigResolver {
 	/**
 	 * Environment variable name for defining local paths.

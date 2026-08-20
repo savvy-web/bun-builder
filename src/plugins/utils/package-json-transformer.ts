@@ -73,7 +73,6 @@ export type FlexibleExports = PackageJson.Exports | Record<string, unknown> | Fl
  *
  * @internal
  */
-// biome-ignore lint/complexity/noStaticOnlyClass: Intentional static-only class for API organization
 export class PackageJsonTransformer {
 	/**
 	 * Transforms a single export path for build output compatibility.

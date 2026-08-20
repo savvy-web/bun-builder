@@ -170,7 +170,6 @@ export interface FileEntry {
  *
  * @internal
  */
-// biome-ignore lint/complexity/noStaticOnlyClass: Intentional static-only class for API organization
 export class BuildLogger {
 	/**
 	 * Prefix width to match RSlib-style output.

@@ -12,6 +12,7 @@
 		"**/dist",
 		"**/CHANGELOG.md",
 		"**/.claude/plans",
+		"**/docs/superpowers/**",
 		"**/.git",
 		"**/docs/superpowers",
 		"**/__test__/**/fixtures/**",

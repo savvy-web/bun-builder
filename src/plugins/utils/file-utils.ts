@@ -71,7 +71,6 @@ export interface FileExistResult {
  *
  * @internal
  */
-// biome-ignore lint/complexity/noStaticOnlyClass: Intentional static-only class for API organization
 export class FileSystemUtils {
 	/**
 	 * Asynchronously checks if a file exists in the current working directory.
@@ -311,7 +310,6 @@ export class FileSystemUtils {
  *
  * @internal
  */
-// biome-ignore lint/complexity/noStaticOnlyClass: Intentional static-only class for API organization
 export class LocalPathValidator {
 	/**
 	 * Validates that parent directories exist for all specified paths.
