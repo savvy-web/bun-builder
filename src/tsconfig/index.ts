@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import type { InspectOptions } from "node:util";
 import { inspect } from "node:util";
-// biome-ignore lint/correctness/useImportExtensions: we can import JSON files directly
 import nodeEcmaLibJson from "../public/tsconfig/ecma/lib.json" with { type: "json" };
 import type { TSConfigJsonWithSchema } from "../types/tsconfig-json.js";
 
