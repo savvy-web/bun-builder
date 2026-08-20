@@ -70,6 +70,7 @@
 		"@savvy-web/silk": "^3.8.1",
 		"@types/bun": "catalog:build",
 		"@types/parse-path": "^7.1.0",
+		"@typescript/native-preview": "catalog:silk",
 		"type-fest": "^5.8.0",
 		"typescript": "^5.9.3"
 	},
