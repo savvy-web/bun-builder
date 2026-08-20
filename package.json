@@ -34,6 +34,7 @@
 		"./tsconfig/root.json": "./src/public/tsconfig/root.json",
 		"./tsconfig/ecma/lib.json": "./src/public/tsconfig/ecma/lib.json"
 	},
+	"workspaces": ["."],
 	"scripts": {
 		"build": "turbo run build:dev build:npm --log-order=grouped --log-prefix=none",
 		"build:dev": "bun run ./bun.config.ts --env-mode dev",
@@ -57,22 +58,23 @@
 	"dependencies": {
 		"@microsoft/tsdoc": "^0.16.0",
 		"@microsoft/tsdoc-config": "^0.18.1",
-		"@typescript-eslint/parser": "^8.60.1",
+		"@typescript-eslint/parser": "^8.67.0",
 		"eslint": "^10.4.1",
 		"eslint-plugin-tsdoc": "^0.5.2",
 		"picocolors": "^1.1.1",
 		"sort-package-json": "^4.0.0"
 	},
 	"devDependencies": {
-		"@microsoft/api-extractor": "^7.58.7",
-		"@savvy-web/silk": "^3.7.0",
-		"@types/bun": "^1.3.14",
-		"type-fest": "^5.7.0"
+		"@microsoft/api-extractor": "^7.58.13",
+		"@savvy-web/pnpm-plugin-silk": "0.26.1",
+		"@savvy-web/silk": "^3.8.1",
+		"@types/bun": "^1.4.0",
+		"type-fest": "^5.8.0"
 	},
 	"peerDependencies": {
 		"@microsoft/api-extractor": "^7.58.7",
 		"@types/bun": "^1.3.14",
-		"typescript": "^7.0.2"
+		"typescript": "^5.9.3"
 	},
 	"peerDependenciesMeta": {
 		"@microsoft/api-extractor": {
