@@ -46,8 +46,10 @@ jobs:
           upgrade-package-manager: "^1.0.0"
           upgrade-runtime-bun: "^1.0.0"
           config-dependencies: |
+            @effected/pnpm-plugin-effect
             @savvy-web/pnpm-plugin-silk
           dependencies: |
+            @effected/*
             @savvy-web/*
             @microsoft/api-extractor
             @microsoft/tsdoc
