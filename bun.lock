@@ -16,8 +16,8 @@
       "devDependencies": {
         "@effected/pnpm-plugin-effect": "^0.5.0",
         "@microsoft/api-extractor": "^7.58.13",
-        "@savvy-web/pnpm-plugin-silk": "^0.27.0",
-        "@savvy-web/silk": "^3.8.1",
+        "@savvy-web/pnpm-plugin-silk": "^0.28.0",
+        "@savvy-web/silk": "^3.8.2",
         "@types/bun": "catalog:build",
         "@types/parse-path": "^7.1.0",
         "@typescript/native-preview": "catalog:silk",
@@ -90,7 +90,7 @@
     },
     "lint": {
       "@biomejs/biome": "2.5.0",
-      "@changesets/cli": "^3.0.0",
+      "@changesets/cli": "^3.0.1",
       "@commitlint/cli": "^21.2.1",
       "@commitlint/config-conventional": "^21.2.0",
       "husky": "^9.1.7",
@@ -101,7 +101,7 @@
     },
     "lint:peers": {
       "@biomejs/biome": "2.5.0",
-      "@changesets/cli": "^3.0.0",
+      "@changesets/cli": "^3.0.1",
       "@commitlint/cli": "^21.2.1",
       "@commitlint/config-conventional": "^21.2.0",
       "husky": "^9.1.7",
@@ -155,7 +155,7 @@
       "@tsdown/css": "^0.22.14",
       "@tsdown/exe": "^0.22.14",
       "@types/bun": "^1.3.14",
-      "@types/node": "^26.1.2",
+      "@types/node": "^26.2.0",
       "@types/react": "^19.2.18",
       "@types/react-dom": "^19.2.4",
       "@typescript/native-preview": "^7.0.0-dev.20260707.2",
@@ -170,7 +170,7 @@
       "react-dom": "^19.2.8",
       "rolldown": "^1.2.1",
       "tsdown": "^0.22.14",
-      "tsx": "^4.23.4",
+      "tsx": "^4.23.12",
       "turbo": "^2.10.8",
       "typescript": "^7.0.2",
       "vitest": "^4.1.10",
@@ -220,7 +220,7 @@
       "@tsdown/css": "^0.22.14",
       "@tsdown/exe": "^0.22.14",
       "@types/bun": "^1.3.14",
-      "@types/node": "^26.1.0",
+      "@types/node": "^26.2.0",
       "@types/react": "^19.2.0",
       "@types/react-dom": "^19.2.0",
       "@typescript/native-preview": "^7.0.0-dev.20260707.2",
@@ -235,15 +235,15 @@
       "react-dom": "^19.2.0",
       "rolldown": "^1.2.0",
       "tsdown": "^0.22.0",
-      "tsx": "^4.23.4",
+      "tsx": "^4.23.12",
       "turbo": "^2.10.8",
       "typescript": "^7.0.0",
       "vitest": "^4.1.0",
     },
     "test": {
-      "@vitest/coverage-istanbul": "^4.1.10",
-      "@vitest/coverage-v8": "^4.1.10",
-      "vitest": "^4.1.10",
+      "@vitest/coverage-istanbul": "^4.1.11",
+      "@vitest/coverage-v8": "^4.1.11",
+      "vitest": "^4.1.11",
     },
     "test:peers": {
       "@vitest/coverage-istanbul": "^4.1.0",
@@ -591,15 +591,15 @@
 
     "@savvy-web/changelog": ["@savvy-web/changelog@0.1.1", "", { "dependencies": { "jju": "^1.4.0", "semver": "^7.8.5" } }, "sha512-UR0PEbLzFlLpz78jIDxTAfSc73TVQoZNZfGGzeBFP/s6wG8y3m5KUJwzY6CsisBxJrI44wOMBYdWztTM21PgJw=="],
 
-    "@savvy-web/cli": ["@savvy-web/cli@2.6.6", "", { "dependencies": { "@effect/platform-node": "4.0.0-rc.109", "@effected/commands": "^0.5.0", "@effected/git": "^0.9.0", "@effected/jsonc": "^0.7.0", "@effected/templates": "^0.4.0", "@effected/workspaces": "^0.15.0", "@effected/yaml": "^0.10.0", "@savvy-web/silk-effects": "6.0.2", "effect": "4.0.0-rc.109" }, "bin": { "savvy": "bin/savvy.js" } }, "sha512-lM4FrbAAwKFju2IGSlsxbcBLMaWnSrqFcGAvC3treFDkHFDPT63o8Cqv5/PNW/JO8IPiETUX18GmsIY197pAQQ=="],
+    "@savvy-web/cli": ["@savvy-web/cli@2.6.7", "", { "dependencies": { "@effect/platform-node": "4.0.0-rc.109", "@effected/commands": "^0.5.0", "@effected/git": "^0.9.0", "@effected/jsonc": "^0.7.0", "@effected/templates": "^0.4.0", "@effected/workspaces": "^0.15.1", "@effected/yaml": "^0.10.0", "@savvy-web/silk-effects": "6.0.3", "effect": "4.0.0-rc.109" }, "bin": { "savvy": "bin/savvy.js" } }, "sha512-0w/pPZcFVNuKlYh75c2nibx1c4ms11F66urBst1lAi99jG3ptZ9wry8llBFwIX7u6R4wW4rlfHm3tNrCLITHqA=="],
 
-    "@savvy-web/mcp": ["@savvy-web/mcp@2.4.7", "", { "dependencies": { "@effect/platform-node": "4.0.0-rc.109", "@effected/commands": "^0.5.0", "@effected/git": "^0.9.0", "@effected/workspaces": "^0.15.0", "@modelcontextprotocol/sdk": "^1.30.0", "@savvy-web/silk-effects": "6.0.2", "effect": "4.0.0-rc.109", "zod": "^4.4.3" }, "bin": { "savvy-mcp": "bin/savvy-mcp.js" } }, "sha512-sEeGDjDPuM2rJcj9Y3QV07fF46kmFaI2J1BPPlYXt/VPThgMbvD+jEOu7dJRZK+cjqdZNN2kaWN6JV3pYyfKxw=="],
+    "@savvy-web/mcp": ["@savvy-web/mcp@2.4.8", "", { "dependencies": { "@effect/platform-node": "4.0.0-rc.109", "@effected/commands": "^0.5.0", "@effected/git": "^0.9.0", "@effected/workspaces": "^0.15.1", "@modelcontextprotocol/sdk": "^1.30.0", "@savvy-web/silk-effects": "6.0.3", "effect": "4.0.0-rc.109", "zod": "^4.4.3" }, "bin": { "savvy-mcp": "bin/savvy-mcp.js" } }, "sha512-HUUzbXH7GHIqCcbqPwxfuWBLlKlhz1i7xvaR87464DaQuigTnbBPt3nIvJUzpBbr+dQzlddoNnI660Itq4K9kg=="],
 
-    "@savvy-web/pnpm-plugin-silk": ["@savvy-web/pnpm-plugin-silk@0.27.0", "", {}, "sha512-HXeAY2jIfr/XKXqOTTHM0LM9a04nj6I1+MG3EhsOBRY5jhwlCqhar+Gs3axfIE2irTt6oSt0I4eXQZnO/A1bzg=="],
+    "@savvy-web/pnpm-plugin-silk": ["@savvy-web/pnpm-plugin-silk@0.28.0", "", {}, "sha512-Kc02T+OYFDCdM62q9o2XGJivV0A+zlj1wIv+POShOH1DFpKNAsQj9W53XmrJ71FcoTR6phyin5OHd9I0BVEtWw=="],
 
-    "@savvy-web/silk": ["@savvy-web/silk@3.8.1", "", { "dependencies": { "@effected/templates": "^0.4.0", "@savvy-web/changelog": "0.1.1", "@savvy-web/cli": "2.6.6", "@savvy-web/mcp": "2.4.7", "@savvy-web/silk-effects": "6.0.2", "effect": "4.0.0-rc.109", "semver": "^7.8.5" }, "peerDependencies": { "@biomejs/biome": "2.5.0", "@changesets/cli": "^3.0.0", "@commitlint/cli": "^21.2.2", "@commitlint/config-conventional": "^21.2.2", "@types/bun": "^1.3.14", "@types/node": "^26.2.0", "@vitest/coverage-istanbul": "^4.1.10", "@vitest/coverage-v8": "^4.1.10", "husky": "^9.1.7", "lint-staged": "^17.3.0", "markdownlint-cli2": "^0.23.2", "markdownlint-cli2-formatter-codequality": "^0.0.7", "tsx": "^4.23.12", "turbo": "^2.10.10", "typescript": "^7.0.2", "vitest": "^4.1.10" }, "optionalPeers": ["@biomejs/biome"] }, "sha512-1mZoGpxrEurx2CKyJdsWNTvd5JAmFGoc3AfPR5YylR7u3bWFXxC6pykHjHCidGXY7qAHFgggXUj5PJANKFdEBw=="],
+    "@savvy-web/silk": ["@savvy-web/silk@3.8.2", "", { "dependencies": { "@effected/templates": "^0.4.0", "@savvy-web/changelog": "0.1.1", "@savvy-web/cli": "2.6.7", "@savvy-web/mcp": "2.4.8", "@savvy-web/silk-effects": "6.0.3", "effect": "4.0.0-rc.109", "semver": "^7.8.5" }, "peerDependencies": { "@biomejs/biome": "2.5.0", "@changesets/cli": "^3.0.1", "@commitlint/cli": "^21.2.2", "@commitlint/config-conventional": "^21.2.2", "@types/bun": "^1.3.14", "@types/node": "^26.2.0", "@vitest/coverage-istanbul": "^4.1.11", "@vitest/coverage-v8": "^4.1.11", "husky": "^9.1.7", "lint-staged": "^17.3.0", "markdownlint-cli2": "^0.23.2", "markdownlint-cli2-formatter-codequality": "^0.0.7", "tsx": "^4.23.12", "turbo": "^2.10.11", "typescript": "^7.0.2", "vitest": "^4.1.11" }, "optionalPeers": ["@biomejs/biome"] }, "sha512-iY6/zZ9TMUYOO6Nx0J+ro96ROP/tpKTOU5Bu2QwUJs9Muibmtp5UD0e6nu7z7Mw3ZxOOrTgJ+zLQs1S0J4Qa5Q=="],
 
-    "@savvy-web/silk-effects": ["@savvy-web/silk-effects@6.0.2", "", { "dependencies": { "@changesets/apply-release-plan": "^8.0.0", "@changesets/config": "^4.0.0", "@changesets/get-github-info": "^1.0.0", "@changesets/get-release-plan": "^5.0.0", "@effected/commands": "^0.5.0", "@effected/git": "^0.9.0", "@effected/github-references": "^0.1.0", "@effected/glob": "^0.4.0", "@effected/jsonc": "^0.7.0", "@effected/package-json": "^0.10.2", "@effected/templates": "^0.4.0", "@effected/walker": "^0.5.0", "@effected/workspaces": "^0.15.0", "@effected/yaml": "^0.10.0", "@manypkg/get-packages": "^3.1.0", "mdast-util-heading-range": "^4.0.0", "mdast-util-to-string": "^4.0.0", "remark-gfm": "^4.0.1", "remark-parse": "^11.0.0", "remark-stringify": "^11.0.0", "shell-quote": "^1.10.0", "unified": "^11.0.5", "unified-lint-rule": "^3.0.1", "unist-util-visit": "^5.1.0" }, "peerDependencies": { "effect": "4.0.0-rc.109" } }, "sha512-wcXzoXFjGaUo+Oxk+bqfAqfLPJjqx5u7D3l6w+Yez5D4RoIsePbBZt/nDKHNeR5jFlWSfsQneSjlyTS4BpyXrg=="],
+    "@savvy-web/silk-effects": ["@savvy-web/silk-effects@6.0.3", "", { "dependencies": { "@changesets/apply-release-plan": "^8.0.0", "@changesets/config": "^4.0.0", "@changesets/get-github-info": "^1.0.0", "@changesets/get-release-plan": "^5.0.0", "@effected/commands": "^0.5.0", "@effected/git": "^0.9.0", "@effected/github-references": "^0.1.0", "@effected/glob": "^0.4.0", "@effected/jsonc": "^0.7.0", "@effected/package-json": "^0.10.2", "@effected/templates": "^0.4.0", "@effected/walker": "^0.5.0", "@effected/workspaces": "^0.15.1", "@effected/yaml": "^0.10.0", "@manypkg/get-packages": "^3.1.0", "mdast-util-heading-range": "^4.0.0", "mdast-util-to-string": "^4.0.0", "remark-gfm": "^4.0.1", "remark-parse": "^11.0.0", "remark-stringify": "^11.0.0", "shell-quote": "^1.10.0", "unified": "^11.0.5", "unified-lint-rule": "^3.0.1", "unist-util-visit": "^5.1.0" }, "peerDependencies": { "effect": "4.0.0-rc.109" } }, "sha512-zvTYCzhrubE1FxsbX7bDbyLA5XU89zzky1sKe2KQhulBIA4Ssm9NYhAp7FepaO21hNBejlchTVCzxvsbGo9SVQ=="],
 
     "@sindresorhus/merge-streams": ["@sindresorhus/merge-streams@4.0.0", "", {}, "sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ=="],
 
