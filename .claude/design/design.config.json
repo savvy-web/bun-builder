@@ -1,28 +1,75 @@
 {
 	"$schema": "../skills/design-config/json-schemas/current.json",
-	"version": "1.0.0",
-	"project": {
-		"name": "@savvy-web/bun-builder",
-		"type": "package",
-		"repository": "https://github.com/savvy-web/bun-builder",
-		"maintainer": "Spencer Beggs"
-	},
-	"paths": {
-		"designDocs": ".claude/design",
-		"plans": ".claude/plans",
-		"skills": ".claude/skills",
-		"context": "CLAUDE.md"
+	"integration": {
+		"ci": {
+			"enabled": false,
+			"syncOnMerge": false,
+			"validateOnPR": false
+		},
+		"git": {
+			"requireReviewForChanges": false,
+			"trackDesignDocs": true
+		},
+		"plans": {
+			"autoSyncProgress": false,
+			"bidirectionalLinking": true,
+			"cacheMetadata": true,
+			"cacheTTL": 300,
+			"enabled": true,
+			"validateOnCommit": true
+		}
 	},
 	"modules": {
 		"bun-builder": {
-			"path": ".",
-			"designDocsPath": ".claude/design/bun-builder",
 			"categories": ["architecture", "performance", "testing", "integration", "reference"],
+			"designDocsPath": ".claude/design/bun-builder",
 			"maintainer": "Spencer Beggs",
+			"path": ".",
 			"userDocs": {
 				"readme": "README.md",
 				"repoDocs": null,
 				"siteDocs": null
+			}
+		}
+	},
+	"paths": {
+		"context": "CLAUDE.md",
+		"designDocs": ".claude/design",
+		"plans": ".claude/plans",
+		"skills": ".claude/skills"
+	},
+	"project": {
+		"maintainer": "Spencer Beggs",
+		"name": "@savvy-web/bun-builder",
+		"repository": "https://github.com/savvy-web/bun-builder",
+		"type": "package"
+	},
+	"quality": {
+		"context": {
+			"childMaxLines": 300,
+			"requireDesignDocPointers": true,
+			"rootMaxLines": 500
+		},
+		"designDocs": {
+			"maxLineLength": 120,
+			"minSections": ["Overview", "Current State", "Rationale"],
+			"requireFrontmatter": true,
+			"requireTOC": true
+		},
+		"plans": {
+			"archiveAfterDays": 30,
+			"maxLineLength": 120,
+			"progressRange": [0, 100],
+			"requiredFields": ["name", "title", "created", "status", "progress"],
+			"requireFrontmatter": true,
+			"stalenessThresholdDays": 30,
+			"validStatuses": ["ready", "in-progress", "blocked", "completed", "abandoned"]
+		},
+		"userDocs": {
+			"level1": {
+				"maxLineLength": 100,
+				"requireSections": ["Features", "Installation", "Usage"],
+				"targetWordCount": [200, 500]
 			}
 		}
 	},
@@ -41,52 +88,5 @@
 			"design-config"
 		]
 	},
-	"quality": {
-		"designDocs": {
-			"maxLineLength": 120,
-			"requireFrontmatter": true,
-			"requireTOC": true,
-			"minSections": ["Overview", "Current State", "Rationale"]
-		},
-		"userDocs": {
-			"level1": {
-				"targetWordCount": [200, 500],
-				"maxLineLength": 100,
-				"requireSections": ["Features", "Installation", "Usage"]
-			}
-		},
-		"context": {
-			"rootMaxLines": 500,
-			"childMaxLines": 300,
-			"requireDesignDocPointers": true
-		},
-		"plans": {
-			"maxLineLength": 120,
-			"requireFrontmatter": true,
-			"requiredFields": ["name", "title", "created", "status", "progress"],
-			"validStatuses": ["ready", "in-progress", "blocked", "completed", "abandoned"],
-			"progressRange": [0, 100],
-			"stalenessThresholdDays": 30,
-			"archiveAfterDays": 30
-		}
-	},
-	"integration": {
-		"ci": {
-			"enabled": false,
-			"validateOnPR": false,
-			"syncOnMerge": false
-		},
-		"git": {
-			"trackDesignDocs": true,
-			"requireReviewForChanges": false
-		},
-		"plans": {
-			"enabled": true,
-			"bidirectionalLinking": true,
-			"autoSyncProgress": false,
-			"validateOnCommit": true,
-			"cacheMetadata": true,
-			"cacheTTL": 300
-		}
-	}
+	"version": "1.0.0"
 }
