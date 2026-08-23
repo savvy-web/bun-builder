@@ -1,5 +1,23 @@
 # @savvy-web/rslib-builder
 
+## 0.7.1
+
+### Dependencies
+
+* | Dependency | Type       | Action  | From    | To      |                                                                            |
+  | ---------- | ---------- | ------- | ------- | ------- | -------------------------------------------------------------------------- |
+  | eslint     | dependency | updated | ^10.8.1 | ^10.9.0 | [#54][#54] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
+
+- | Dependency | Type           | Action  | From    | To     |                                                                            |
+  | ---------- | -------------- | ------- | ------- | ------ | -------------------------------------------------------------------------- |
+  | @types/bun | peerDependency | updated | ^1.3.14 | ^1.4.0 | [#58][#58] Thanks [@savvy-web-bot](https://github.com/apps/savvy-web-bot)! |
+
+### Patch Changes
+
+[#54]: https://github.com/savvy-web/bun-builder/pull/54
+
+[#58]: https://github.com/savvy-web/bun-builder/pull/58
+
 ## 0.7.0
 
 ### Minor Changes
