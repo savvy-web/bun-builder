@@ -72,12 +72,12 @@
 		"@types/parse-path": "^7.1.0",
 		"@typescript/native-preview": "catalog:silk",
 		"type-fest": "^5.8.0",
-		"typescript": "^5.9.3"
+		"typescript": "^7.0.2"
 	},
 	"peerDependencies": {
 		"@microsoft/api-extractor": "^7.58.7",
 		"@types/bun": "catalog:build",
-		"typescript": "^5.9.3"
+		"typescript": "^7.0.2"
 	},
 	"peerDependenciesMeta": {
 		"@microsoft/api-extractor": {
