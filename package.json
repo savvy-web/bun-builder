@@ -64,9 +64,9 @@
 		"sort-package-json": "^4.0.0"
 	},
 	"devDependencies": {
-		"@effected/pnpm-plugin-effect": "^0.6.3",
+		"@effected/pnpm-plugin-effect": "^0.7.7",
 		"@microsoft/api-extractor": "^7.59.0",
-		"@savvy-web/pnpm-plugin-silk": "^0.31.1",
+		"@savvy-web/pnpm-plugin-silk": "^0.34.3",
 		"@savvy-web/silk": "^3.10.0",
 		"@types/bun": "catalog:build",
 		"@types/parse-path": "^7.1.0",
