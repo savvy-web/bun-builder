@@ -67,7 +67,7 @@
 		"@effected/pnpm-plugin-effect": "^0.6.3",
 		"@microsoft/api-extractor": "^7.59.0",
 		"@savvy-web/pnpm-plugin-silk": "^0.31.1",
-		"@savvy-web/silk": "^3.10.0",
+		"@savvy-web/silk": "^4.2.0",
 		"@types/bun": "catalog:build",
 		"@types/parse-path": "^7.1.0",
 		"@typescript/native-preview": "catalog:silk",
